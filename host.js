@@ -277,28 +277,7 @@
     }), '只清除筆劃，圖片、文字、圖形會留著');
     add(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動物件</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前全部鎖定，要先按「解鎖」才能移動'); else toast('🖐️ 點物件可以移動、縮放；按右鍵或「⋯」有更多設定'); }));
     var sb = add(btn('tb' + (tool.mode === 'shape' ? ' on' : ''), '🔷<small>圖形</small>', function () { shapePanel(sb); })); sb.dataset.pop = 1;
-    var nb = add(btn('tb', '📝<small>便利貼</small>', function () { notePanel(nb); })); nb.dataset.pop = 1;
-    var tb2 = add(btn('tb', '🔤<small>文字</small>', function () {
-      openPop(tb2, function (p) {
-        p.appendChild(el('div', 'pop-h', '文字框'));
-        var r = el('div', 'pop-row');
-        r.appendChild(btn('btn', '🔤 橫式', function () { closePop(); addText('', false); }));
-        r.appendChild(btn('btn', '↕️ 直式', function () { closePop(); addText('', true); }));
-        r.appendChild(btn('btn', '🔗 連結', function () { closePop(); addLinkBox(); }));
-        r.appendChild(btn('btn', '🎬 影片', function () { closePop(); addLinkBox(true); }));
-        p.appendChild(r);
-      });
-    })); tb2.dataset.pop = 1;
-    add(btn('tb', '🖼️<small>圖片</small>', function () { $('file-in').click(); }));
-    add(btn('tb', '📋<small>貼上</small>', pasteButton));
-    var bgb = add(btn('tb' + (V.bg ? ' on' : ''), (V.bg === 'grid' ? '▦' : V.bg === 'dots' ? '⁙' : '⬜') + '<small>背景</small>', function () {
-      openPop(bgb, function (p) {
-        p.appendChild(el('div', 'pop-h', '畫布背景（移動物件時會對齊格子，並顯示幾格）'));
-        var r = el('div', 'pop-row');
-        [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線']].forEach(function (b) { r.appendChild(btn('btn' + (V.bg === b[0] ? ' primary' : ''), b[1], function () { closePop(); setBg(b[0]); })); });
-        p.appendChild(r);
-      });
-    })); bgb.dataset.pop = 1;
+    var ib = add(btn('tb', '➕<small>插入 ▾</small>', function () { insertPanel(ib); }), '便利貼、文字、連結、影片、圖片、貼上、背景'); ib.dataset.pop = 1;
     add(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '全部已鎖' : '全部鎖定') + '</small>', function () {
       S.lock = !S.lock; save(); V.setLocked(S.lock); renderTools();
       toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解除全部鎖定');
@@ -384,6 +363,32 @@
     i.oninput = upd; out.textContent = fmt ? fmt(+val) : val;
     r.appendChild(minus); r.appendChild(i); r.appendChild(plus); r.appendChild(out);
     return r;
+  }
+  function insertPanel(anchor) {
+    openPop(anchor, function (p) {
+      p.classList.add('ins-pop');
+      p.appendChild(el('div', 'pop-l', '📝 便利貼（點顏色就貼上）'));
+      var r = el('div', 'pop-row');
+      NOTE_COLORS.forEach(function (c) { var b = btn('note-sw', c[1], function () { closePop(); addNote(c[0]); }); b.style.background = c[0]; r.appendChild(b); });
+      p.appendChild(r);
+      p.appendChild(el('div', 'pop-l', '🔤 文字・連結・影片'));
+      r = el('div', 'pop-row');
+      r.appendChild(btn('btn', '🔤 橫式文字', function () { closePop(); addText('', false); }));
+      r.appendChild(btn('btn', '↕️ 直式文字', function () { closePop(); addText('', true); }));
+      r.appendChild(btn('btn', '🔗 連結', function () { closePop(); addLinkBox(); }));
+      r.appendChild(btn('btn', '🎬 影片', function () { closePop(); addLinkBox(true); }));
+      p.appendChild(r);
+      p.appendChild(el('div', 'pop-l', '🖼️ 圖片'));
+      r = el('div', 'pop-row');
+      r.appendChild(btn('btn', '🖼️ 選擇圖片檔', function () { closePop(); $('file-in').click(); }));
+      r.appendChild(btn('btn', '📋 貼上（Ctrl+V）', function () { closePop(); pasteButton(); }));
+      p.appendChild(r);
+      p.appendChild(el('div', 'pop-l', '▦ 畫布背景（移動物件時會對齊格子）'));
+      r = el('div', 'pop-row');
+      [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線']].forEach(function (b) { r.appendChild(btn('btn' + ((V.bg || '') === b[0] ? ' primary' : ''), b[1], function () { closePop(); setBg(b[0]); })); });
+      p.appendChild(r);
+      p.appendChild(el('div', 'pop-l', '學生能不能貼便利貼，在「📋 任務指派」每一組設定。'));
+    });
   }
   function notePanel(anchor) {
     openPop(anchor, function (p) {
