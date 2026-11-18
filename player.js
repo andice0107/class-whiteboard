@@ -97,7 +97,8 @@
       case 'live': if (V && d.from !== me.sid && d.o && d.o.by !== me.sid) V.live(d.bid, d.o); break;
       case 'hostup': send({ t: 'join' }); break;
       case 'replaced': if (d.cid === me.cid) { stop(); infoScreen('這個學號已經在另一台裝置登入了。', '在這台繼續用', function () { connect(0); }); } break;
-      case 'closed': stop(); infoScreen('老師已經關閉這間教室了。', '加入新的教室', function () { joinScreen(); }); break;
+      case 'closed': stop(); me.cid = null; saveMe(); infoScreen('老師已經結束這堂課，關閉教室了。', '加入新的教室', function () { joinScreen(); }); break;
+      case 'kicked': if (d.cid === me.cid) { stop(); me.cid = null; saveMe(); infoScreen('老師已經把你移出這間教室。', '重新加入', function () { joinScreen(); }); } break;
     }
   }
   var asked = {};
@@ -130,7 +131,8 @@
       canEdit: function (o) { return o && o.k === 'n' && o.by === me.sid && !!cur.note; },
       onSelect: function () { renderTools(); },
       onOp: function (bid, op) { send({ t: 'op', bid: bid, op: op }); renderTools(); },
-      onLive: function (bid, o) { send({ t: 'live', bid: bid, o: o }); }
+      onLive: function (bid, o) { send({ t: 'live', bid: bid, o: o }); },
+      onWantSelect: function () { if (cur.note) setTool('select'); }
     });
     V.setTool(tool);
     renderTools();

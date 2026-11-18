@@ -81,7 +81,7 @@ window.WB = (function () {
     ctx.save();
     ctx.translate(o.x + o.w / 2, o.y + o.h / 2); ctx.rotate((o.r || 0) * Math.PI / 180); if (o.fx) ctx.scale(-1, 1);
     if (o.k === 'i') { var im = imgEl(o.src); if (im && im.complete && im.naturalWidth) ctx.drawImage(im, -o.w / 2, -o.h / 2, o.w, o.h); else { ctx.fillStyle = '#eef1f7'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); } }
-    else if (o.k === 'g') drawShape(ctx, o);
+    else if (o.k === 'g') { drawShape(ctx, o); if (o.txt) { var gfs = o.fs || 32; ctx.globalAlpha = 1; ctx.fillStyle = o.tc || '#111'; ctx.font = gfs + 'px "PingFang TC","Noto Sans TC",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; var gl = String(o.txt).split('\n'); gl.forEach(function (l, i) { ctx.fillText(l, 0, (i - (gl.length - 1) / 2) * gfs * 1.3, o.w - 12); }); } }
     else if (o.k === 'v') { ctx.fillStyle = '#111'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); ctx.fillStyle = '#e53935'; var r0 = Math.min(o.w, o.h) * 0.14; ctx.beginPath(); ctx.moveTo(-r0 * 0.7, -r0); ctx.lineTo(r0 * 1.1, 0); ctx.lineTo(-r0 * 0.7, r0); ctx.closePath(); ctx.fill(); }
     else if (o.k === 'n') {
       ctx.fillStyle = o.c || '#fff3a6'; ctx.shadowColor = 'rgba(0,0,0,.18)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); ctx.shadowColor = 'transparent';
@@ -89,6 +89,7 @@ window.WB = (function () {
       String(o.txt || '').split('\n').forEach(function (l, i) { ctx.fillText(l, -o.w / 2 + 12, -o.h / 2 + 12 + i * nfs * 1.35, o.w - 24); });
     }
     else if (o.k === 't') {
+      if (o.bd) { ctx.strokeStyle = o.bd; ctx.lineWidth = o.bw || 3; ctx.strokeRect(-o.w / 2, -o.h / 2, o.w, o.h); }
       var fs = o.fs || 36; ctx.fillStyle = o.c || '#111'; ctx.font = fs + 'px "PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline = 'top';
       var lines = String(o.txt || '').split('\n');
       if (!o.v) lines.forEach(function (l, i) { ctx.fillText(l, -o.w / 2 + 8, -o.h / 2 + 6 + i * fs * 1.35, o.w - 16); });
@@ -149,7 +150,8 @@ window.WB = (function () {
     var bgl = document.createElement('div'); bgl.className = 'wb-bgl';
     var layer = document.createElement('div'); layer.className = 'wb-objs';
     var sel = document.createElement('div'); sel.className = 'wb-sel';
-    stage.appendChild(bgl); stage.appendChild(layer); stage.appendChild(base); stage.appendChild(top); stage.appendChild(sel); host.appendChild(stage);
+    var vlayer = document.createElement('div'); vlayer.className = 'wb-objs wb-vids';
+    stage.appendChild(bgl); stage.appendChild(layer); stage.appendChild(base); stage.appendChild(top); stage.appendChild(vlayer); stage.appendChild(sel); host.appendChild(stage);
     var bctx = base.getContext('2d'), tctx = top.getContext('2d');
     var V = { objs: [], bid: null, tool: { mode: 'pen', color: '#111', width: 4 }, editable: false, hist: {} };
     var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null, shaping = null, zooming = null;
@@ -157,7 +159,7 @@ window.WB = (function () {
     function S_() { return scale * V.vp.z; }
     function applyVp() {
       var s = S_();
-      [bgl, layer, sel].forEach(function (l) { l.style.transform = 'scale(' + s + ') translate(' + (-V.vp.x) + 'px,' + (-V.vp.y) + 'px)'; });
+      [bgl, layer, vlayer, sel].forEach(function (l) { l.style.transform = 'scale(' + s + ') translate(' + (-V.vp.x) + 'px,' + (-V.vp.y) + 'px)'; });
       stage.style.setProperty('--inv', 1 / s);
       stage.classList.toggle('zoomed', V.vp.z > 1.001);
       dirty = true;
@@ -200,7 +202,7 @@ window.WB = (function () {
     var els = {}, editing = null;
     imgWait.push(function () { dirty = true; });
     function drawObjs() {
-      var seen = {};
+      var seen = {}, prevL = null, prevV = null;
       V.objs.forEach(function (o) {
         if (o.k === 's') return;
         seen[o.id] = 1;
@@ -213,25 +215,32 @@ window.WB = (function () {
             var fr = document.createElement('iframe'); fr.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen'; fr.allowFullscreen = true;
             fr.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(o.yt) + '?enablejsapi=1&playsinline=1&rel=0&modestbranding=1' + (o.st ? '&start=' + o.st : '') + '&origin=' + encodeURIComponent(location.origin);
             fr.onload = function () { try { fr.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: o.id, channel: 'widget' }), '*'); } catch (x) {} };
-            e.appendChild(fr); e.appendChild(document.createElement('div')).className = 'wb-vgrip';
+            e.appendChild(fr); e.appendChild(document.createElement('div')).className = 'wb-vbar';
+            e.lastChild.textContent = '🖐️ 拖這條移動影片';
           }
           else e.appendChild(document.createElement('div')).className = 'wb-txt';
+          if (o.k === 'g') e.appendChild(document.createElement('div')).className = 'wb-txt wb-gt';
           els[o.id] = e;
         }
         e.style.left = o.x + 'px'; e.style.top = o.y + 'px'; e.style.width = o.w + 'px'; e.style.height = o.h + 'px';
         e.style.transform = 'rotate(' + (o.r || 0) + 'deg)' + (o.fx ? ' scaleX(-1)' : '');
         e.classList.toggle('sel', V.sel === o.id);
         e.classList.toggle('mine', !!(opt.canEdit && opt.canEdit(o)));
+        e.classList.toggle('lk', !!o.lk);
         if (o.k === 'i') { var im = e.firstChild, src = imgs[o.src] || ''; if (im.getAttribute('src') !== src) { if (src) im.src = src; else im.removeAttribute('src'); } e.classList.toggle('loading', !src); }
         else if (o.k === 'v') { /* iframe 不重建，避免影片重新載入 */ }
-        else if (o.k === 'g') { var sv = shapeSvg(o); if (e.firstChild._h !== sv) { e.firstChild.innerHTML = sv; e.firstChild._h = sv; } }
         else {
-          var t = e.firstChild; t.style.fontSize = (o.fs || (o.k === 'n' ? 28 : 36)) + 'px';
+          if (o.k === 'g') { var sv = shapeSvg(o); if (e.firstChild._h !== sv) { e.firstChild.innerHTML = sv; e.firstChild._h = sv; } }
+          var t = o.k === 'g' ? e.lastChild : e.firstChild; t.style.fontSize = (o.fs || (o.k === 'n' ? 28 : o.k === 'g' ? 32 : 36)) + 'px';
+          if (o.k === 't') e.style.border = o.bd ? (o.bw || 3) + 'px solid ' + o.bd : '';
+          if (o.k === 'g') t.style.color = o.tc || '#111'; else
           if (o.k === 'n') { e.style.background = o.c || '#fff3a6'; t.style.color = '#333'; } else t.style.color = o.c || '#111';
           t.classList.toggle('vert', !!o.v);
-          if (editing !== o.id) { var h = linkify(o.txt) || '<span class="ph">' + (o.k === 'n' ? '（點兩下寫字）' : '（點兩下輸入文字）') + '</span>'; if (t._h !== h) { t.innerHTML = h; t._h = h; } }
+          if (editing !== o.id) { var h = linkify(o.txt) || (o.k === 'g' ? '' : '<span class="ph">' + (o.k === 'n' ? '（點兩下寫字）' : '（點兩下輸入文字）') + '</span>'); if (t._h !== h) { t.innerHTML = h; t._h = h; } }
         }
-        layer.appendChild(e);
+        var L = o.k === 'v' ? vlayer : layer, pv = o.k === 'v' ? prevV : prevL, want = pv ? pv.nextSibling : L.firstChild;
+        if (want !== e) L.insertBefore(e, want); /* 只有順序不對才移動，避免打字時失去焦點 */
+        if (o.k === 'v') prevV = e; else prevL = e;
       });
       for (var id in els) if (!seen[id]) { els[id].remove(); delete els[id]; if (V.sel === id) select(null); }
       drawSel();
@@ -242,9 +251,11 @@ window.WB = (function () {
     function drawSel() {
       var o = V.sel && find(V.sel);
       if (!o || V.tool.mode !== 'select') { sel.innerHTML = ''; sel._id = null; return; }
-      if (sel._id !== o.id) {
-        sel.innerHTML = '<div class="box"><i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i><i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i><i class="rot" data-h="rot">⟳</i><span class="szl"></span></div>';
-        sel._id = o.id;
+      var key = o.id + (o.lk ? 'L' : '') + (opt.onContext ? 'M' : '');
+      if (sel._id !== key) {
+        sel.innerHTML = o.lk ? '<div class="box lk"><i class="lkb" data-h="menu">🔒</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>'
+          : '<div class="box"><i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i><i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i><i class="rot" data-h="rot">⟳</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>';
+        sel._id = key;
       }
       var b = sel.firstChild;
       b.style.left = o.x + 'px'; b.style.top = o.y + 'px'; b.style.width = o.w + 'px'; b.style.height = o.h + 'px';
@@ -264,7 +275,7 @@ window.WB = (function () {
     }
     V.change = function (patch) { var o = V.sel && find(V.sel); if (o) change(o, patch, true); };
     V.addObj = function (o) { V.objs.push(o); dirty = true; commit([o], []); select(o.id); };
-    V.deleteSel = function () { var o = V.sel && find(V.sel); if (!o) return; select(null); applyOp(V.objs, { del: [o.id] }); dirty = true; commit([], [o]); };
+    V.deleteSel = function () { var o = V.sel && find(V.sel); if (!o || o.lk) return; select(null); applyOp(V.objs, { del: [o.id] }); dirty = true; commit([], [o]); };
     var lastSync = 0;
     function onDown(e) {
       if (V.tool.mode !== 'select' || V.locked) return;
@@ -274,7 +285,9 @@ window.WB = (function () {
       if (!o) { select(null); return; }
       if (editing === o.id) return;
       e.preventDefault();
+      if (h === 'menu') { if (opt.onContext) opt.onContext(o, e.clientX, e.clientY); return; }
       if (!h) select(o.id);
+      if (o.lk) return;
       var p = pos(e), cx = o.x + o.w / 2, cy = o.y + o.h / 2, th = (o.r || 0) * Math.PI / 180;
       dragStart = { o: o, orig: o, h: h || 'move', p: p, cx: cx, cy: cy, th: th, moved: false, link: e.target.closest('a'), id: e.pointerId };
       try { stage.setPointerCapture(e.pointerId); } catch (x) {}
@@ -318,12 +331,60 @@ window.WB = (function () {
     stage.addEventListener('pointerdown', onDown);
     stage.addEventListener('pointermove', onMove);
     stage.addEventListener('pointerup', onUp); stage.addEventListener('pointercancel', onUp);
-    stage.addEventListener('dblclick', function (e) { if (V.tool.mode !== 'select' || V.locked) return; var oe = e.target.closest('.wb-t,.wb-n'); if (oe && (!opt.canEdit || opt.canEdit(find(oe.dataset.id)))) V.editText(oe.dataset.id); });
+    /* 物件命中測試（含旋轉） */
+    function objAt(x, y, kinds) {
+      for (var i = V.objs.length - 1; i >= 0; i--) {
+        var o = V.objs[i]; if (o.k === 's' || (kinds && kinds.indexOf(o.k) < 0)) continue;
+        var cx = o.x + o.w / 2, cy = o.y + o.h / 2, a = -(o.r || 0) * Math.PI / 180, dx = x - cx, dy = y - cy;
+        var lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a), m = 6;
+        if (Math.abs(lx) <= o.w / 2 + m && Math.abs(ly) <= o.h / 2 + m) return o;
+      }
+      return null;
+    }
+    V.objAt = objAt;
+    var taps = [];
+    stage.addEventListener('dblclick', function (e) {
+      if (!V.editable || V.locked) return;
+      var p = pos(e), oe = e.target.closest && e.target.closest('.wb-t,.wb-n,.wb-g');
+      var o = oe ? find(oe.dataset.id) : objAt(p[0], p[1], ['t', 'n', 'g']);
+      if (!o || o.lk || (opt.canEdit && !opt.canEdit(o))) return;
+      /* 用畫筆點兩下時，先把點出來的小點收回 */
+      var now = Date.now(), tid = taps.filter(function (t) { return now - t.t < 900; }).map(function (t) { return t.id; }); taps = [];
+      if (tid.length) {
+        applyOp(V.objs, { del: tid }); var h = hist();
+        while (h.length && h[h.length - 1].add.length === 1 && tid.indexOf(h[h.length - 1].add[0].id) >= 0) h.pop();
+        opt.onOp && opt.onOp(V.bid, { del: tid, add: [] }, true); dirty = true;
+      }
+      if (V.tool.mode !== 'select' && opt.onWantSelect) opt.onWantSelect();
+      V.editText(o.id);
+    });
+    stage.addEventListener('contextmenu', function (e) {
+      if (!opt.onContext) return;
+      e.preventDefault();
+      if (!V.editable) return;
+      var p = pos(e), o = objAt(p[0], p[1]);
+      if (o && opt.canEdit && !opt.canEdit(o)) o = null;
+      opt.onContext(o, e.clientX, e.clientY);
+    });
+    if (opt.wheelZoom) stage.addEventListener('wheel', function (e) {
+      var r = top.getBoundingClientRect();
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        var p = pos(e), z = Math.max(1, Math.min(8, V.vp.z * Math.exp(-e.deltaY * 0.0022)));
+        var ox = (e.clientX - r.left) / scale, oy = (e.clientY - r.top) / scale;
+        V.setViewport({ z: z, x: p[0] - ox / z, y: p[1] - oy / z });
+      } else if (V.vp.z > 1.001) {
+        e.preventDefault();
+        var dx = e.shiftKey ? e.deltaY : e.deltaX, dy = e.shiftKey ? 0 : e.deltaY;
+        V.setViewport({ z: V.vp.z, x: V.vp.x + dx / S_(), y: V.vp.y + dy / S_() });
+      } else return;
+      opt.onViewport && opt.onViewport(V.vp);
+    }, { passive: false });
     stage.addEventListener('click', function (e) { if (V.tool.mode === 'select' && e.target.closest('a')) e.preventDefault(); });
     V.editText = function (id) {
       if (!els[id]) drawObjs();
-      var o = find(id), e = els[id]; if (!o || (o.k !== 't' && o.k !== 'n') || !e) return;
-      select(id); editing = id; var t = e.firstChild;
+      var o = find(id), e = els[id]; if (!o || (o.k !== 't' && o.k !== 'n' && o.k !== 'g') || !e) return;
+      select(id); editing = id; var t = o.k === 'g' ? e.lastChild : e.firstChild;
       t.contentEditable = 'true'; t.textContent = o.txt || ''; t._h = null; e.classList.add('editing'); t.focus();
       var r = document.createRange(); r.selectNodeContents(t); r.collapse(false); var sl = getSelection(); sl.removeAllRanges(); sl.addRange(r);
       t.onblur = finishEdit;
@@ -332,7 +393,7 @@ window.WB = (function () {
     function finishEdit() {
       if (!editing) return; var id = editing; editing = null;
       var e = els[id], o = find(id); if (!e || !o) return;
-      var t = e.firstChild; t.contentEditable = 'false'; e.classList.remove('editing'); t.onblur = null;
+      var t = o.k === 'g' ? e.lastChild : e.firstChild; t.contentEditable = 'false'; e.classList.remove('editing'); t.onblur = null;
       var txt = t.innerText.replace(/\n$/, ''); t._h = null;
       if (txt !== (o.txt || '')) change(o, { txt: txt }, true); else dirty = true;
     }
@@ -361,8 +422,13 @@ window.WB = (function () {
             if (pd) { var at = pd.at; if (pd.cmd === 'play' && at != null) at += (Date.now() - pd.ts) / 1000; V.video(id, pd.cmd, at); }
           }
           if (!d.info) break;
-          var st = V.vt[id] || (V.vt[id] = {});
-          if (d.info.currentTime != null) st.t = d.info.currentTime;
+          var st = V.vt[id] || (V.vt[id] = {}), now2 = Date.now();
+          if (d.info.currentTime != null) {
+            var exp = st.t == null ? null : st.s === 1 ? st.t + (now2 - (st.at || now2)) / 1000 : st.t;
+            var ps = d.info.playerState == null ? st.s : d.info.playerState;
+            if (opt.onVideo && exp != null && Math.abs(d.info.currentTime - exp) > 2 && (ps === 1 || ps === 2) && ps === st.s) opt.onVideo(id, ps === 1 ? 'play' : 'pause', d.info.currentTime);
+            st.t = d.info.currentTime; st.at = now2;
+          }
           if (d.info.playerState != null && d.info.playerState !== st.s) {
             var prev = st.s; st.s = d.info.playerState;
             if (opt.onVideo && !st.mute && (st.s === 1 || (st.s === 2 && prev === 1))) opt.onVideo(id, st.s === 1 ? 'play' : 'pause', st.t || 0);
@@ -450,6 +516,8 @@ window.WB = (function () {
       }
       if (mine) {
         var o = mine; mine = null; o.p = densify(o.p, 5);
+        var xs = o.p.filter(function (v, i) { return i % 2 === 0; }), ys = o.p.filter(function (v, i) { return i % 2 === 1; });
+        if (Math.max.apply(null, xs) - Math.min.apply(null, xs) < 10 && Math.max.apply(null, ys) - Math.min.apply(null, ys) < 10) taps.push({ id: o.id, t: Date.now() });
         V.objs.push(o); dirty = true; commit([o], []);
       } else if (erasing) {
         var E = erasing; erasing = null;
@@ -482,6 +550,10 @@ window.WB = (function () {
       var rem = V.objs.filter(function (o) { return o.k === 's' && (all || o.by === opt.me); });
       if (!rem.length) return false;
       applyOp(V.objs, { del: rem.map(function (o) { return o.id; }) }); dirty = true; commit([], rem); return true;
+    };
+    V.clearAll = function () {
+      var rem = V.objs.slice(); if (!rem.length) return false;
+      select(null); applyOp(V.objs, { del: rem.map(function (o) { return o.id; }) }); dirty = true; commit([], rem); return true;
     };
     V.setEditable = function (b) {
       V.editable = b; var m = V.tool.mode, draw = b && (m === 'pen' || m === 'erase' || m === 'shape' || m === 'zoom');

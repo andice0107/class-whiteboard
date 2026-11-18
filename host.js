@@ -87,7 +87,7 @@
       var free = !g.lock && !(isSrc && S.cast.pen === false);
       return { bid: 'G:' + gid, pen: free && penOK(sid), note: free && noteOK(gid), title: (isSrc ? '📽️ 你們的畫面正在分享給大家・' : '✏️ 作業時間・') + '第 ' + pageNo(g.cur) + ' 頁' + (g.custom ? '（' + gname(gid) + '）' : '') + (g.lock ? '・🔒 老師暫停操作' : ''), mode: S.mode, end: end, vp: null };
     }
-    return { bid: 'P:' + S.cur, pen: false, note: false, title: S.mode === 'work' ? '⏳ 老師還沒有指派畫板給你，先看老師的畫面' : '📽️ 上課中：看老師的畫面', mode: S.mode, end: end, vp: S.mode === 'present' ? S.zoom : null };
+    return { bid: 'P:' + S.cur, pen: false, note: false, title: S.mode === 'work' ? '⏳ 老師還沒有指派畫板給你，先看老師的畫面' : S.mode === 'show' ? '📽️ 簡報中：看老師的畫面' : '🧑‍🏫 上課中：看老師的畫面', mode: S.mode, end: end, vp: S.mode !== 'work' ? S.zoom : null };
   }
   function genOf(bid) { if (bid.slice(0, 2) === 'G:') { var g = S.groups[bid.slice(2)]; return g ? g.cur : ''; } return ''; }
   function metaKey(v) { return [v.pen, v.note, v.title, v.mode, v.end, JSON.stringify(v.vp), bgOf(v.bid)].join('|'); }
@@ -191,15 +191,19 @@
       distribute(bid, { t: 'op', op: op });
       boardChanged(bid); save(); if (!temp) renderTools();
     },
-    onSelect: function () { renderObjBar(); },
+    onSelect: function (o) { if (pop && pop._obj && (!o || pop._obj !== o.id)) closePop(); },
+    onContext: function (o, x, y) { if (S.mode === 'show') return; objMenu(o, x, y); },
+    onWantSelect: function () { setMode('select'); },
+    wheelZoom: true,
     onLive: function (bid, o) { distribute(bid, { t: 'live', o: o }); },
     onVideo: function (id, cmd, at) { distribute(V.bid, { t: 'vid', id: id, cmd: cmd, at: at }); },
     onViewport: function (vp) {
       if (tv.kind !== 'page') return;
-      S.zoom = vp.z > 1.001 ? { x: vp.x, y: vp.y, z: vp.z } : null; save();
-      refreshAll(); renderCtx();
+      S.zoom = vp.z > 1.001 ? { x: Math.round(vp.x), y: Math.round(vp.y), z: +vp.z.toFixed(3) } : null; save();
+      if (!vpT) vpT = setTimeout(function () { vpT = null; refreshAll(); renderCtx(); }, 120);
     }
   });
+  var vpT = null;
   var tool = { mode: 'pen', color: COLORS[1], width: WIDTHS[1], shape: { shape: 'rect', sc: '#111111', sw: 3, fill: false, fc: '#ffd6e0', op: 1, n: 5, rows: 3, cols: 3 } };
   V.setTool(tool); V.setEditable(true);
 
@@ -210,7 +214,7 @@
     V.load(bid, objsOf(bid));
     V.setBg(bgOf(bid));
     V.setViewport(tv.kind === 'page' ? S.zoom : null);
-    renderCtx(); renderPages(); renderTools();
+    renderCtx(); renderPages(); renderTools(); renderNav();
   }
   function renderCtx() {
     var c = $('ctx-bar'); c.innerHTML = '';
@@ -222,10 +226,10 @@
       c.appendChild(btn('btn sm', '⬅️ 回到我的畫板', function () { tv = { kind: 'page' }; showBoard(); }));
     } else {
       c.className = 'ctx-bar';
-      var txt = S.mode === 'present' ? '📽️ 簡報模式：全班看這一頁（第 ' + pageNo(S.cur) + ' 頁）' : '✏️ 作業模式：你現在看的是第 ' + pageNo(S.cur) + ' 頁（學生在自己的畫板上作答）';
+      var txt = S.mode === 'work' ? '✏️ 學生在自己的畫板作答，你正在看第 ' + pageNo(S.cur) + ' 頁' : '全班看第 ' + pageNo(S.cur) + ' / ' + S.pages.length + ' 頁';
       c.appendChild(el('span', '', txt));
       if (S.zoom) {
-        c.appendChild(el('span', 'zoom-tag', '🔍 放大 ' + S.zoom.z.toFixed(1) + ' 倍' + (S.mode === 'present' ? '（學生同步）' : '')));
+        c.appendChild(el('span', 'zoom-tag', '🔍 ' + S.zoom.z.toFixed(1) + ' 倍' + (S.mode !== 'work' ? '（學生同步）' : '')));
         c.appendChild(btn('btn sm', '還原大小', function () { V.setViewport(null); S.zoom = null; save(); refreshAll(); renderCtx(); }));
       }
     }
@@ -245,27 +249,38 @@
   document.addEventListener('pointerdown', function (e) { if (pop && !pop.contains(e.target) && !e.target.closest('[data-pop]')) closePop(); }, true);
   function openPop(anchor, build) {
     closePop(); pop = el('div', 'pop'); build(pop); document.body.appendChild(pop);
-    var r = anchor.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
-    var x = Math.max(8, Math.min(innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)), y = r.top - ph - 8; if (y < 8) y = r.bottom + 8;
-    pop.style.left = x + 'px'; pop.style.top = Math.max(8, y) + 'px';
+    var r = anchor.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight, x, y;
+    if (anchor.closest('.toolbar')) { x = r.left - pw - 10; y = r.top + r.height / 2 - ph / 2; }
+    else { x = r.left + r.width / 2 - pw / 2; y = r.top - ph - 8; if (y < 8) y = r.bottom + 8; }
+    pop.style.left = Math.max(8, Math.min(innerWidth - pw - 8, x)) + 'px'; pop.style.top = Math.max(8, Math.min(innerHeight - ph - 8, y)) + 'px';
+  }
+  function openPopAt(x, y, build) {
+    closePop(); pop = el('div', 'pop'); build(pop); document.body.appendChild(pop);
+    var pw = pop.offsetWidth, ph = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(innerWidth - pw - 8, x + 4)) + 'px'; pop.style.top = Math.max(8, Math.min(innerHeight - ph - 8, y + 4)) + 'px';
+    return pop;
   }
   function renderTools() {
     var t = $('toolbar'); t.innerHTML = '';
-    var g1 = el('div', 'tgrp');
-    g1.appendChild(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '✏️<small>畫筆</small>', function () { setMode('pen'); }));
-    var cs = el('div', 'colors');
-    COLORS.forEach(function (c) { var b = btn('sw' + (tool.mode === 'pen' && tool.color === c ? ' on' : ''), '', function () { tool.color = c; setMode('pen'); }); b.style.background = c; b.title = c; cs.appendChild(b); });
-    g1.appendChild(cs);
-    var ws = el('div', 'widths');
-    WIDTHS.forEach(function (w) { var b = btn('wd' + (tool.width === w ? ' on' : ''), '<i style="width:' + (w + 4) + 'px;height:' + (w + 4) + 'px"></i>', function () { tool.width = w; setMode('pen'); }); ws.appendChild(b); });
-    g1.appendChild(ws);
-    g1.appendChild(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { setMode('erase'); }));
-    t.appendChild(g1);
-    var g2 = el('div', 'tgrp');
-    g2.appendChild(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動物件</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前是鎖定的，要先按「解鎖」才能移動'); }));
-    var sb = btn('tb' + (tool.mode === 'shape' ? ' on' : ''), '🔷<small>圖形</small>', function () { shapePanel(sb); }); sb.dataset.pop = 1; g2.appendChild(sb);
-    var nb = btn('tb', '📝<small>便利貼</small>', function () { notePanel(nb); }); nb.dataset.pop = 1; g2.appendChild(nb);
-    var tb2 = btn('tb', '🔤<small>文字</small>', function () {
+    function add(b, title) { if (title) b.title = title; t.appendChild(b); return b; }
+    add(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '<span class="pen-ic" style="--c:' + tool.color + '">✏️</span><small>畫筆</small>', function () { setMode('pen'); }));
+    for (var i = 0; i < COLORS.length; i += 2) {
+      var cs = el('div', 'tcell colors');
+      COLORS.slice(i, i + 2).forEach(function (c) { var b = btn('sw' + (tool.mode === 'pen' && tool.color === c ? ' on' : ''), '', function () { tool.color = c; setMode('pen'); }); b.style.background = c; b.title = c; cs.appendChild(b); });
+      t.appendChild(cs);
+    }
+    var ws = el('div', 'tcell widths');
+    WIDTHS.forEach(function (w) { var b = btn('wd' + (tool.width === w ? ' on' : ''), '<i style="width:' + (w + 3) + 'px;height:' + (w + 3) + 'px"></i>', function () { tool.width = w; setMode('pen'); }); ws.appendChild(b); });
+    t.appendChild(ws);
+    add(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { setMode('erase'); }));
+    add(btn('tb', '🧹<small>清除筆劃</small>', function () {
+      if (!V.objs.some(function (o) { return o.k === 's'; })) return toast('這一頁沒有筆劃');
+      V.clear(true); renderTools(); toast('🧹 已清除這一頁所有筆劃（按「上一步」可以復原）');
+    }), '只清除筆劃，圖片、文字、圖形會留著');
+    add(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動物件</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前全部鎖定，要先按「解鎖」才能移動'); else toast('🖐️ 點物件可以移動、縮放；按右鍵或「⋯」有更多設定'); }));
+    var sb = add(btn('tb' + (tool.mode === 'shape' ? ' on' : ''), '🔷<small>圖形</small>', function () { shapePanel(sb); })); sb.dataset.pop = 1;
+    var nb = add(btn('tb', '📝<small>便利貼</small>', function () { notePanel(nb); })); nb.dataset.pop = 1;
+    var tb2 = add(btn('tb', '🔤<small>文字</small>', function () {
       openPop(tb2, function (p) {
         p.appendChild(el('div', 'pop-h', '文字框'));
         var r = el('div', 'pop-row');
@@ -275,30 +290,27 @@
         r.appendChild(btn('btn', '🎬 影片', function () { closePop(); addLinkBox(true); }));
         p.appendChild(r);
       });
-    }); tb2.dataset.pop = 1; g2.appendChild(tb2);
-    g2.appendChild(btn('tb', '🖼️<small>圖片</small>', function () { $('file-in').click(); }));
-    g2.appendChild(btn('tb', '📋<small>貼上</small>', pasteButton));
-    var bgb = btn('tb' + (V.bg ? ' on' : ''), (V.bg === 'grid' ? '▦' : V.bg === 'dots' ? '⁙' : '⬜') + '<small>背景</small>', function () {
+    })); tb2.dataset.pop = 1;
+    add(btn('tb', '🖼️<small>圖片</small>', function () { $('file-in').click(); }));
+    add(btn('tb', '📋<small>貼上</small>', pasteButton));
+    var bgb = add(btn('tb' + (V.bg ? ' on' : ''), (V.bg === 'grid' ? '▦' : V.bg === 'dots' ? '⁙' : '⬜') + '<small>背景</small>', function () {
       openPop(bgb, function (p) {
         p.appendChild(el('div', 'pop-h', '畫布背景（移動物件時會對齊格子，並顯示幾格）'));
         var r = el('div', 'pop-row');
         [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線']].forEach(function (b) { r.appendChild(btn('btn' + (V.bg === b[0] ? ' primary' : ''), b[1], function () { closePop(); setBg(b[0]); })); });
         p.appendChild(r);
       });
-    }); bgb.dataset.pop = 1; g2.appendChild(bgb);
-    g2.appendChild(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '物件已鎖定' : '鎖定物件') + '</small>', function () {
+    })); bgb.dataset.pop = 1;
+    add(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '全部已鎖' : '全部鎖定') + '</small>', function () {
       S.lock = !S.lock; save(); V.setLocked(S.lock); renderTools();
-      toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解鎖，可以用「移動物件」調整');
+      toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解除全部鎖定');
+    }), '鎖定或解鎖這一頁所有物件（單一物件請按右鍵鎖定）');
+    if (tv.kind === 'page') add(btn('tb' + (tool.mode === 'zoom' ? ' on' : ''), '🔍<small>放大鏡</small>', function () { setMode('zoom'); toast('🔍 框出要放大的地方；也可以按住 Ctrl 再轉滑鼠滾輪' + (S.mode !== 'work' ? '，學生畫面會一起放大' : '')); }), '快捷鍵：按住 Ctrl（Mac 用 ⌘）＋滑鼠滾輪');
+    var u = add(btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); })); u.disabled = !V.canUndo();
+    add(btn('tb danger', '🗑️<small>全清除</small>', function () {
+      if (!V.objs.length) return toast('這一頁已經是空白的');
+      confirmBox('要把這一頁全部清空嗎？（筆劃、圖片、文字、圖形、便利貼、影片都會清掉；按「上一步」可以復原）', '全部清除', function () { V.clearAll(); renderTools(); });
     }));
-    if (tv.kind === 'page') g2.appendChild(btn('tb' + (tool.mode === 'zoom' ? ' on' : ''), '🔍<small>放大鏡</small>', function () { setMode('zoom'); toast('🔍 在畫面上框出要放大的地方' + (S.mode === 'present' ? '，學生的畫面會一起放大' : '')); }));
-    t.appendChild(g2);
-    var g3 = el('div', 'tgrp');
-    var u = btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); }); u.disabled = !V.canUndo(); g3.appendChild(u);
-    g3.appendChild(btn('tb', '🗑️<small>全消除</small>', function () {
-      confirmBox('要把這一頁的筆劃全部擦掉嗎？（含學生的筆劃；圖片、文字、圖形、便利貼不會被擦掉；按「上一步」可以救回來）', '全部擦掉', function () { V.clear(true); renderTools(); });
-    }));
-    t.appendChild(g3);
-    renderObjBar();
   }
   function setBg(b) {
     var pid = tv.kind === 'group' ? S.groups[tv.gid].cur : S.cur, p = page(pid); if (!p) return;
@@ -361,55 +373,75 @@
     });
   }
 
-  /* 選到物件時出現的調整列 */
-  function renderObjBar() {
-    var b = $('objbar'), o = V.sel && V.find(V.sel);
-    if (!o || tool.mode !== 'select') { b.hidden = true; return; }
-    b.hidden = false; b.innerHTML = '';
-    b.appendChild(el('b', '', { i: '🖼️ 圖片', t: '🔤 文字框', g: '🔷 圖形', n: '📝 便利貼', v: '🎬 影片' }[o.k] || '物件'));
-    if (o.k === 'v') {
-      b.appendChild(btn('btn sm primary', '▶ 全班一起播放', function () { var t = (V.vt[o.id] || {}).t || 0; V.video(o.id, 'play', t); distribute(V.bid, { t: 'vid', id: o.id, cmd: 'play', at: t }); }));
-      b.appendChild(btn('btn sm', '⏸ 全班暫停', function () { var t = (V.vt[o.id] || {}).t || 0; V.video(o.id, 'pause'); distribute(V.bid, { t: 'vid', id: o.id, cmd: 'pause', at: t }); }));
-      b.appendChild(btn('btn sm', '⏮ 從頭', function () { V.video(o.id, 'pause', 0); distribute(V.bid, { t: 'vid', id: o.id, cmd: 'pause', at: 0 }); }));
-    }
-    var ang = el('label', 'ang', '旋轉 '); var ai = el('input'); ai.type = 'number'; ai.min = 0; ai.max = 360; ai.value = o.r || 0;
-    ai.onchange = function () { var v = Math.round(+ai.value) || 0; v = +ai.value === 360 ? 360 : ((v % 360) + 360) % 360; V.change({ r: v }); };
-    ang.appendChild(ai); ang.appendChild(document.createTextNode(' 度')); b.appendChild(ang);
-    [[-15, '↺15°'], [15, '↻15°'], [90, '↻90°']].forEach(function (a) { b.appendChild(btn('btn sm', a[1], function () { V.change({ r: (((o.r || 0) + a[0]) % 360 + 360) % 360 }); })); });
-    if (o.k !== 'n') b.appendChild(btn('btn sm' + (o.fx ? ' primary' : ''), '🪞 鏡像', function () { V.change({ fx: !o.fx }); }));
-    if (o.k === 't' || o.k === 'n') {
-      b.appendChild(btn('btn sm', '✏️ 編輯文字', function () { V.editText(o.id); }));
-      b.appendChild(btn('btn sm', 'A－', function () { V.change({ fs: Math.max(14, (o.fs || 36) - 6) }); }));
-      b.appendChild(btn('btn sm', 'A＋', function () { V.change({ fs: Math.min(160, (o.fs || 36) + 6) }); }));
-    }
-    if (o.k === 't') {
-      b.appendChild(btn('btn sm' + (!o.v ? ' primary' : ''), '橫式', function () { if (o.v) V.change({ v: false, w: o.h, h: o.w }); }));
-      b.appendChild(btn('btn sm' + (o.v ? ' primary' : ''), '直式', function () { if (!o.v) V.change({ v: true, w: o.h, h: o.w }); }));
-      b.appendChild(swatches(COLORS.slice(0, 7), o.c || '#111111', function (c) { V.change({ c: c }); }, 'mini'));
-    }
-    if (o.k === 'n') b.appendChild(swatches(NOTE_COLORS.map(function (x) { return x[0]; }), o.c, function (c) { V.change({ c: c }); }, 'mini'));
-    if (o.k === 'g') {
-      var lc = btn('btn sm', '<i class="dotc" style="background:' + (o.sc || '#111') + '"></i> 線色', function () { openPop(lc, function (p) { p.appendChild(swatches(PALETTE, o.sc, function (c) { closePop(); V.change({ sc: c }); })); }); }); lc.dataset.pop = 1; b.appendChild(lc);
-      var fcb = btn('btn sm' + (o.fill ? ' primary' : ''), '<i class="dotc" style="background:' + (o.fill ? o.fc : 'transparent') + '"></i> 填色', function () {
-        openPop(fcb, function (p) {
-          p.appendChild(btn('btn sm' + (!o.fill ? ' primary' : ''), '不填色', function () { closePop(); V.change({ fill: false }); }));
-          p.appendChild(swatches(PALETTE, o.fill ? o.fc : null, function (c) { closePop(); V.change({ fill: true, fc: c }); }));
-        });
-      }); fcb.dataset.pop = 1; b.appendChild(fcb);
-      b.appendChild(btn('btn sm', '線－', function () { V.change({ sw: Math.max(1, (o.sw || 3) - 1) }); }));
-      b.appendChild(btn('btn sm', '線＋', function () { V.change({ sw: Math.min(30, (o.sw || 3) + 1) }); }));
-      b.appendChild(btn('btn sm', '淡', function () { V.change({ op: Math.max(0.1, +((o.op == null ? 1 : o.op) - 0.15).toFixed(2)) }); }));
-      b.appendChild(btn('btn sm', '濃', function () { V.change({ op: Math.min(1, +((o.op == null ? 1 : o.op) + 0.15).toFixed(2)) }); }));
-    }
-    b.appendChild(el('span', 'grow'));
-    b.appendChild(btn('btn sm', '📄 複製', function () { var n = WB.clone(o); n.id = WB.uid(); n.x += 40; n.y += 40; V.addObj(n); renderTools(); }));
-    b.appendChild(btn('btn sm danger', '🗑 刪除', function () { V.deleteSel(); renderTools(); }));
+  /* 物件右鍵選單 */
+  var KIND = { i: '🖼️ 圖片', t: '🔤 文字框', g: '🔷 圖形', n: '📝 便利貼', v: '🎬 影片' };
+  function objMenu(o, x, y) {
+    if (!o) { closePop(); return; }
+    if (tool.mode !== 'select') setMode('select');
+    if (V.sel !== o.id) V.select(o.id);
+    o = V.find(o.id); if (!o) return;
+    var p = openPopAt(x, y, function (m) {
+      m.classList.add('menu', 'objmenu');
+      function row() { var r = el('div', 'pop-row'); m.appendChild(r); return r; }
+      function again() { var n = V.find(o.id); if (n) objMenu(n, x, y); else closePop(); renderTools(); }
+      function chg(patch) { V.change(patch); again(); }
+      var h = el('div', 'pop-h'); h.appendChild(el('span', '', KIND[o.k] || '物件')); m.appendChild(h);
+      m.appendChild(btn('mi' + (o.lk ? ' on' : ''), o.lk ? '🔓 解除鎖定這個物件' : '🔒 鎖定這個物件（不會被移動或修改）', function () { chg({ lk: !o.lk }); }));
+      if (o.lk) { m.appendChild(el('div', 'pop-l', '解除鎖定後才能移動、縮放、修改。')); return; }
+      if (o.k === 't' || o.k === 'n' || o.k === 'g') {
+        var r1 = row();
+        r1.appendChild(btn('btn sm primary', '✏️ ' + (o.k === 'g' ? '在圖形裡打字' : '編輯文字'), function () { closePop(); V.editText(o.id); }));
+        r1.appendChild(btn('btn sm', 'A－', function () { chg({ fs: Math.max(14, (o.fs || 32) - 6) }); }));
+        r1.appendChild(btn('btn sm', 'A＋', function () { chg({ fs: Math.min(160, (o.fs || 32) + 6) }); }));
+        if (o.k === 't') {
+          r1.appendChild(btn('btn sm' + (!o.v ? ' primary' : ''), '橫式', function () { if (o.v) chg({ v: false, w: o.h, h: o.w }); }));
+          r1.appendChild(btn('btn sm' + (o.v ? ' primary' : ''), '直式', function () { if (!o.v) chg({ v: true, w: o.h, h: o.w }); }));
+        }
+      }
+      if (o.k === 't') {
+        m.appendChild(el('div', 'pop-l', '文字顏色'));
+        m.appendChild(swatches(COLORS.slice(0, 7), o.c || '#111111', function (c) { chg({ c: c }); }, 'mini'));
+        m.appendChild(el('div', 'pop-l', '邊框'));
+        var rb = row();
+        rb.appendChild(btn('btn sm' + (!o.bd ? ' primary' : ''), '無邊框', function () { chg({ bd: null }); }));
+        rb.appendChild(swatches(PALETTE.slice(0, 11), o.bd, function (c) { chg({ bd: c }); }, 'mini'));
+        if (o.bd) { rb.appendChild(btn('btn sm', '框－', function () { chg({ bw: Math.max(1, (o.bw || 3) - 1) }); })); rb.appendChild(btn('btn sm', '框＋', function () { chg({ bw: Math.min(20, (o.bw || 3) + 1) }); })); }
+      }
+      if (o.k === 'n') { m.appendChild(el('div', 'pop-l', '便利貼顏色')); m.appendChild(swatches(NOTE_COLORS.map(function (x) { return x[0]; }), o.c, function (c) { chg({ c: c }); }, 'mini')); }
+      if (o.k === 'g') {
+        m.appendChild(el('div', 'pop-l', '線條顏色'));
+        m.appendChild(swatches(PALETTE, o.sc, function (c) { chg({ sc: c }); }, 'mini'));
+        m.appendChild(el('div', 'pop-l', '填滿顏色'));
+        var rf = row(); rf.appendChild(btn('btn sm' + (!o.fill ? ' primary' : ''), '不填色', function () { chg({ fill: false }); }));
+        rf.appendChild(swatches(PALETTE, o.fill ? o.fc : null, function (c) { chg({ fill: true, fc: c }); }, 'mini'));
+        var rl = row();
+        rl.appendChild(btn('btn sm', '線－', function () { chg({ sw: Math.max(1, (o.sw || 3) - 1) }); }));
+        rl.appendChild(btn('btn sm', '線＋', function () { chg({ sw: Math.min(30, (o.sw || 3) + 1) }); }));
+        rl.appendChild(btn('btn sm', '淡一點', function () { chg({ op: Math.max(0.1, +((o.op == null ? 1 : o.op) - 0.15).toFixed(2)) }); }));
+        rl.appendChild(btn('btn sm', '濃一點', function () { chg({ op: Math.min(1, +((o.op == null ? 1 : o.op) + 0.15).toFixed(2)) }); }));
+        if (o.txt) { m.appendChild(el('div', 'pop-l', '圖形裡的文字顏色')); m.appendChild(swatches(COLORS.slice(0, 7), o.tc || '#111111', function (c) { chg({ tc: c }); }, 'mini')); }
+      }
+      var ra = row(); ra.appendChild(el('span', 'pop-l', '旋轉'));
+      var ai = el('input', 'num'); ai.type = 'number'; ai.min = 0; ai.max = 360; ai.value = o.r || 0;
+      ai.onchange = function () { var v = Math.round(+ai.value) || 0; v = +ai.value === 360 ? 360 : ((v % 360) + 360) % 360; chg({ r: v }); };
+      ra.appendChild(ai); ra.appendChild(el('span', '', '度'));
+      [[-15, '↺15°'], [15, '↻15°'], [90, '↻90°']].forEach(function (a) { ra.appendChild(btn('btn sm', a[1], function () { chg({ r: (((o.r || 0) + a[0]) % 360 + 360) % 360 }); })); });
+      if (o.k !== 'n' && o.k !== 'v') ra.appendChild(btn('btn sm' + (o.fx ? ' primary' : ''), '🪞 鏡像', function () { chg({ fx: !o.fx }); }));
+      if (o.k === 'v') m.appendChild(el('div', 'pop-l', '🎬 直接按影片上的播放、暫停或拖時間軸，學生的這部影片會跟著同步。'));
+      var rz = row();
+      rz.appendChild(btn('btn sm', '📄 複製', function () { var n = WB.clone(o); n.id = WB.uid(); n.x += 40; n.y += 40; delete n.lk; closePop(); V.addObj(n); renderTools(); }));
+      rz.appendChild(el('span', 'grow'));
+      rz.appendChild(btn('btn sm danger', '🗑 刪除', function () { closePop(); V.deleteSel(); renderTools(); }));
+    });
+    p._obj = o.id;
   }
   document.addEventListener('keydown', function (e) {
     var ed = document.activeElement && (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !ed) { e.preventDefault(); V.undo(); renderTools(); }
-    else if ((e.key === 'Delete' || e.key === 'Backspace') && !ed && V.sel) { e.preventDefault(); V.deleteSel(); renderTools(); }
-    else if (e.key === 'Escape') closePop();
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && !ed && V.sel) { e.preventDefault(); var so = V.find(V.sel); if (so && so.lk) return toast('🔒 這個物件鎖定了，要先解除鎖定'); closePop(); V.deleteSel(); renderTools(); }
+    else if (e.key === 'Escape') { closePop(); if (document.fullscreenElement && S.mode === 'show') {} }
+    else if (S.mode === 'show' && !ed && $('modal').hidden && /^(ArrowRight|ArrowDown|PageDown| )$/.test(e.key)) { e.preventDefault(); flip(1); }
+    else if (S.mode === 'show' && !ed && $('modal').hidden && /^(ArrowLeft|ArrowUp|PageUp)$/.test(e.key)) { e.preventDefault(); flip(-1); }
   });
 
   /* ---------- 加入圖片、文字、便利貼、連結 ---------- */
@@ -516,7 +548,7 @@
       card.appendChild(el('span', 'pg-no', i + 1));
       card.appendChild(cv);
       var tags = [];
-      if (p.id === S.cur) tags.push(S.mode === 'present' ? '學生看這頁' : '老師畫面');
+      if (p.id === S.cur) tags.push(S.mode !== 'work' ? '學生看這頁' : '老師畫面');
       var ag = liveGroups().filter(function (g) { return S.groups[g].cur === p.id; }).length;
       if (ag) tags.push('指派 ' + ag + ' 組');
       if (tags.length) card.appendChild(el('span', 'pg-tag', tags.join('・')));
@@ -581,6 +613,10 @@
   function renderMode() {
     [].forEach.call($('mode-seg').children, function (b) { b.classList.toggle('on', b.dataset.m === S.mode); });
     document.body.classList.toggle('mode-work', S.mode === 'work');
+    document.body.classList.toggle('mode-show', S.mode === 'show');
+    V.setEditable(S.mode !== 'show');
+    if (S.mode === 'show') { closePop(); if (V.sel) V.select(null); }
+    renderNav();
     var tm = $('timer'); tm.innerHTML = '';
     if (S.mode === 'work') {
       tm.hidden = false;
@@ -595,29 +631,45 @@
       if (Date.now() >= S.workEnd) endWork(true);
     }
   }, 500);
-  function endWork(auto) {
-    S.mode = 'present'; S.workEnd = null; if (S.cast && S.cast.src === 'T') S.cast = null; if (S.cast) S.cast = null;
-    save(); renderMode(); refreshAll(); renderCtx(); renderPages(); renderTask();
-    toast(auto ? '⏰ 作業時間到了，已自動回到簡報模式' : '📽️ 已結束作業，回到簡報模式');
+  var MODE_NAME = { present: '上課模式', show: '簡報模式', work: '作業模式' };
+  function endWork(auto, to) {
+    var was = S.mode; to = to || 'present';
+    S.mode = to; S.workEnd = null;
+    if (was === 'work') S.cast = null;
+    if (to === 'show' && tv.kind !== 'page') tv = { kind: 'page' };
+    save(); renderMode(); refreshAll(); showBoard(); renderTask();
+    toast(was === 'work' ? (auto ? '⏰ 作業時間到了，已自動回到上課模式' : '已結束作業，切換到' + MODE_NAME[to]) : to === 'show' ? '📽️ 簡報模式：只能翻頁和播放影片，按 ← → 鍵或下方按鈕換頁' : '🧑‍🏫 上課模式：可以用所有工具，學生只能看');
+  }
+  function flip(d) {
+    var i = pageIdx(S.cur) + d; if (i < 0 || i >= S.pages.length) return toast(d > 0 ? '已經是最後一頁' : '已經是第一頁');
+    S.cur = S.pages[i].id; S.zoom = null; tv = { kind: 'page' }; save(); refreshAll(); showBoard();
+  }
+  function renderNav() {
+    var n = $('show-nav'); if (!n) return;
+    n.hidden = S.mode !== 'show'; if (n.hidden) return;
+    n.innerHTML = '';
+    var i = pageIdx(S.cur);
+    var a = btn('btn', '◀ 上一頁', function () { flip(-1); }); a.disabled = i <= 0; n.appendChild(a);
+    n.appendChild(el('b', '', (i + 1) + ' / ' + S.pages.length));
+    var b = btn('btn primary', '下一頁 ▶', function () { flip(1); }); b.disabled = i >= S.pages.length - 1; n.appendChild(b);
   }
   function startWork(mins) {
     S.workMins = mins; S.workEnd = mins ? Date.now() + mins * 60000 : null; S.mode = 'work'; S.zoom = null;
     if (S.cast && S.cast.src !== 'T') { /* 保留分享 */ } else S.cast = null;
     save(); V.setViewport(null); renderMode(); refreshAll(); renderCtx(); renderPages(); renderTask();
-    toast('✏️ 作業模式開始' + (mins ? '，' + mins + ' 分鐘後自動回到簡報模式' : '（不限時）'));
+    toast('✏️ 作業模式開始' + (mins ? '，' + mins + ' 分鐘後自動回到上課模式' : '（不限時）'));
   }
   $('mode-seg').onclick = function (e) {
     var m = e.target.closest('button'); if (!m) return; m = m.dataset.m;
     if (m === S.mode) return;
-    if (m === 'present') { endWork(false); return; }
-    workBox();
+    if (m === 'work') workBox(); else endWork(false, m);
   };
   function workBox() {
     var any = liveGroups().some(function (g) { return S.groups[g].cur; });
     modal(function (box) {
       box.appendChild(el('h3', '', '✏️ 開始作業模式'));
       if (!any) box.appendChild(el('p', 'warn-p', '還沒有任何組別被指派畫板。按下開始時，會先把<b>第 ' + pageNo(S.cur) + ' 頁</b>指派給全部組別。'));
-      box.appendChild(el('p', '', '作業時間（時間到會自動回到簡報模式）：'));
+      box.appendChild(el('p', '', '作業時間（時間到會自動回到上課模式）：'));
       var r = el('div', 'pop-row'), val = S.workMins == null ? 3 : S.workMins;
       [1, 2, 3, 5, 8, 10, 15].forEach(function (m) { r.appendChild(btn('btn sm' + (val === m ? ' primary' : ''), m + ' 分', function () { val = m; i.value = m; [].forEach.call(r.children, function (c) { c.classList.toggle('primary', c === this); }, this); })); });
       var i = el('input', 'num'); i.type = 'number'; i.min = 0; i.max = 180; i.value = val; i.oninput = function () { val = Math.max(0, Math.min(180, +i.value || 0)); };
@@ -672,7 +724,7 @@
     for (var k2 in tPick.groups) if (gids.indexOf(k2) < 0) delete tPick.groups[k2];
     var h = el('div', 'wall-h');
     h.appendChild(el('b', '', '📋 任務指派'));
-    h.appendChild(el('span', 'sub', S.mode === 'work' ? '✏️ 作業模式中' + (S.workEnd ? '（剩 ' + fmt(S.workEnd - Date.now()) + '）' : '') : '📽️ 簡報模式中（學生只能看）'));
+    h.appendChild(el('span', 'sub', S.mode === 'work' ? '✏️ 作業模式中' + (S.workEnd ? '（剩 ' + fmt(S.workEnd - Date.now()) + '）' : '') : (MODE_NAME[S.mode] || '') + '中（學生只能看）'));
     var g1 = el('span', 'pen-all'); g1.appendChild(el('span', '', '畫面'));
     g1.appendChild(btn('btn sm' + (S.wallShow ? ' primary' : ''), '👁 全開', function () { S.wallShow = true; S.show = {}; save(); renderTask(); }));
     g1.appendChild(btn('btn sm' + (!S.wallShow ? ' primary' : ''), '🙈 全關', function () { S.wallShow = false; S.show = {}; save(); renderTask(); }));
@@ -774,6 +826,13 @@
 
   /* ---------- 學生名單、分組、畫筆權限 ---------- */
   function setPenAll(b) { S.penAll = b; for (var s in S.students) S.students[s].pen = null; save(); refreshAll(); renderRoster(); renderTask(); toast(b ? '✏️ 已開放全部學生的畫筆' : '🚫 已關閉全部學生的畫筆'); }
+  function kick(sid) {
+    var st = S.students[sid]; if (!st) return;
+    net.send({ t: 'kicked', cid: st.cid }, sid);
+    var gid = st.gid; delete S.students[sid]; delete online[sid]; delete lastSent[sid]; delete picked[sid];
+    if (gid === 'g' + sid && S.groups[gid]) delete S.groups[gid];
+    afterRegroup(); toast('已把學號 ' + sid + ' 移出教室');
+  }
   function togglePen(sid) { S.students[sid].pen = !penOK(sid); if (S.students[sid].pen === S.penAll) S.students[sid].pen = null; save(); refresh(sid); renderRoster(); renderTask(); }
   function setPen(sids, b) { sids.forEach(function (s) { S.students[s].pen = b === S.penAll ? null : b; }); save(); sids.forEach(function (s) { refresh(s); }); renderRoster(); renderTask(); }
   var picked = {};
@@ -881,6 +940,8 @@
       r.appendChild(el('b', '', s));
       r.appendChild(el('span', 'grow'));
       r.appendChild(btn('pen-tg' + (penOK(s) ? ' on' : ''), penOK(s) ? '✏️ 可畫' : '🚫 不可畫', function () { togglePen(s); }));
+      var k = btn('kick', '✕', function () { confirmBox('要把學號 ' + s + ' 移出教室嗎？（打錯學號或不在班上的人可以用這個移除；之後他用正確的教室代碼還是可以再加入）', '移出教室', function () { kick(s); }); });
+      k.title = '移出教室'; r.appendChild(k);
       return r;
     }
     customGroups().forEach(function (g) {
@@ -908,7 +969,7 @@
       solo.forEach(function (s) { sec.appendChild(row(s)); });
       side.appendChild(sec);
     }
-    side.appendChild(el('p', 'hint', '畫筆權限只在「作業模式」有作用；簡報模式時學生一律只能看。同一組的人會一起畫同一塊畫板。'));
+    side.appendChild(el('p', 'hint', '按學號右邊的 ✕ 可以把那位學生移出教室。畫筆權限只在「作業模式」有作用；上課和簡報模式時學生一律只能看。同一組的人會一起畫同一塊畫板。'));
     side.scrollTop = sc;
   }
   $('b-roster').onclick = function () { $('side').hidden = !$('side').hidden; renderRoster(); setTimeout(V.refit, 30); };
@@ -926,7 +987,7 @@
     S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null;
     for (var g in S.groups) { S.groups[g].boards = {}; S.groups[g].cur = null; }
     if (S.mode === 'work') { S.mode = 'present'; S.workEnd = null; }
-    tv = { kind: 'page' }; save(); renderAll(); refreshAll(true);
+    tv = { kind: 'page' }; V.hist = {}; save(); renderAll(); refreshAll(true);
     return true;
   }
   function stamp() { var d = new Date(); return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '-' + ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2); }
@@ -980,11 +1041,26 @@
       box.appendChild(r);
     });
   };
-  $('b-new').onclick = function () {
-    confirmBox('要開一間新教室嗎？會換一組新的教室代碼，學生需要重新加入；畫板頁面會保留。', '開新教室', function () {
-      var old = net; S = fresh(true); tv = { kind: 'page' }; save(); old && old.send({ t: 'closed' }, '*'); connect(); renderAll(); $('b-join').click();
+  $('b-end').onclick = function () {
+    var n = Object.keys(S.students).length;
+    confirmBox('要結束這堂課、關閉教室嗎？' + (n ? '教室裡的 ' + n + ' 位學生都會被請出教室，學生名單和分組會清空。' : '') + '畫板頁面會保留。下次上課會換一組新的教室代碼。', '🚪 結束上課', function () {
+      var old = net; old && old.send({ t: 'closed' }, '*');
+      setTimeout(function () {
+        S = fresh(true); tv = { kind: 'page' }; save(); connect(); renderAll();
+        modal(function (box) {
+          box.appendChild(el('h3', '', '🚪 已結束上課'));
+          box.appendChild(el('p', '', '學生都已離開教室，畫板內容都還在。下次上課的新教室代碼是 <b>' + S.code + '</b>（按上方的教室代碼就會顯示 QR code）。'));
+          var row = el('div', 'modal-btns'); row.appendChild(btn('btn primary', '好', closeModal)); box.appendChild(row);
+        });
+      }, 400);
     });
   };
+  $('b-full').onclick = function () {
+    if (document.fullscreenElement) document.exitFullscreen && document.exitFullscreen();
+    else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () { toast('這台裝置不支援全螢幕'); });
+    else toast('這台裝置不支援全螢幕');
+  };
+  document.addEventListener('fullscreenchange', function () { $('b-full').innerHTML = document.fullscreenElement ? '🗗 離開全螢幕' : '⛶ 全螢幕'; setTimeout(V.refit, 100); });
 
   /* ---------- 對話框 ---------- */
   function modal(build) { closePop(); var m = $('modal'), b = $('modal-box'); b.className = 'modal-box'; b.innerHTML = ''; build(b); m.hidden = false; }
