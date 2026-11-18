@@ -1,4 +1,4 @@
-/* 共用畫板・老師端：老師這台是總管，保存所有頁面、小組畫板與學生名單 */
+/* Andice的共用畫板・老師端：老師這台是總管，保存所有頁面、小組畫板與學生名單 */
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
@@ -604,7 +604,7 @@
       if (i < S.pages.length - 1) item('⬇️ 往後移', function () { S.pages.splice(i, 1); S.pages.splice(i + 1, 0, p); save(); renderPages(); refreshAll(); });
       item('▦ 背景：' + ({ '': '空白', dots: '格點', grid: '格線' }[p.bg || '']) + '（點一下換）', function () { p.bg = { '': 'dots', dots: 'grid', grid: '' }[p.bg || '']; save(); if (curBid() === 'P:' + p.id) V.setBg(p.bg); refreshAll(); boardChanged('P:' + p.id); renderTools(); });
       item('🧹 清除這一頁的筆劃', function () { confirmBox('要清除第 ' + (i + 1) + ' 頁的所有筆劃嗎？（圖片、文字、圖形、便利貼會保留）', '清除', function () { var rem = p.objs.filter(function (o) { return o.k === 's'; }).map(function (o) { return o.id; }); WB.applyOp(p.objs, { del: rem }); distribute('P:' + p.id, { t: 'op', op: { del: rem, add: [] } }); if (V.bid === 'P:' + p.id) V.apply(V.bid, { del: rem }); save(); boardChanged('P:' + p.id); }); });
-      item('💾 這一頁另存成圖片', function () { var cv = document.createElement('canvas'); cv.width = 1600; cv.height = 900; WB.render(cv.getContext('2d'), p.objs, 1, '#fff', true); var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = '畫板第' + (i + 1) + '頁.png'; a.click(); });
+      item('💾 這一頁另存成圖片', function () { var cv = document.createElement('canvas'); cv.width = 1600; cv.height = 900; WB.render(cv.getContext('2d'), p.objs, 1, '#fff', true); var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = 'Andice的共用畫板_第' + (i + 1) + '頁.png'; a.click(); });
       if (S.pages.length > 1) item('🗑️ 刪除這一頁', function () { confirmBox('要刪除第 ' + (i + 1) + ' 頁嗎？（指派到這一頁的組別作答內容也會一起刪除，刪掉就救不回來）', '刪除', function () { delPage(p.id); }); }, 'danger');
     });
   }
@@ -1027,7 +1027,7 @@
     return { app: 'class-whiteboard', v: 1, name: S.projName || '', savedAt: new Date().toISOString(), pages: S.pages, imgs: used };
   }
   function loadProject(d) {
-    if (!d || d.app !== 'class-whiteboard' || !Array.isArray(d.pages) || !d.pages.length) { toast('這不是共用畫板的專案檔'); return false; }
+    if (!d || d.app !== 'class-whiteboard' || !Array.isArray(d.pages) || !d.pages.length) { toast('這不是「Andice的共用畫板」的專案檔'); return false; }
     Object.keys(d.imgs || {}).forEach(function (id) { if (d.imgs[id]) { WB.setImg(id, d.imgs[id]); idbPut('i', id, d.imgs[id]); } });
     S.pages = d.pages.map(function (p) { return { id: p.id || WB.uid(), objs: p.objs || [], bg: p.bg || '' }; });
     S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null; S.cloudKey = null; S.myPid = null;

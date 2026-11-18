@@ -1,4 +1,4 @@
-# 共用畫板（師生共用數位白板）
+# Andice的共用畫板（師生共用數位白板）
 
 - 老師端：https://andice0107.github.io/class-whiteboard/
 - 學生端：https://andice0107.github.io/class-whiteboard/play.html （掃老師畫面上的 QR code 進入，再輸入教室代碼與數字學號）

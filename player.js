@@ -1,4 +1,4 @@
-/* 共用畫板・學生端 */
+/* Andice的共用畫板・學生端 */
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
