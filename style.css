@@ -304,3 +304,7 @@ body.mode-show .seg button.on{background:#7048e8;color:#fff}
 .host .toolbar .colors.three{gap:3px}
 .host .toolbar .colors.three .sw{width:18px;height:18px}
 .pen-types .shp{min-width:64px;padding:6px 4px}
+.cloud-box{background:#f4f7ff;border:1px solid #d5defa;border-radius:12px;padding:10px 12px;margin-top:6px}
+.cloud-key{display:block;width:100%;border:2px dashed #9fb1ee;background:#fff;border-radius:10px;padding:8px 10px;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px;font-weight:800;letter-spacing:1px;color:#2342a8;margin:6px 0}
+.cloud-key.big{font-size:24px}
+.cloud-key em{display:block;font-style:normal;font-family:inherit;font-size:13px;color:var(--pri);font-weight:700;letter-spacing:0}

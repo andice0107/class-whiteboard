@@ -1030,7 +1030,7 @@
     if (!d || d.app !== 'class-whiteboard' || !Array.isArray(d.pages) || !d.pages.length) { toast('這不是共用畫板的專案檔'); return false; }
     Object.keys(d.imgs || {}).forEach(function (id) { if (d.imgs[id]) { WB.setImg(id, d.imgs[id]); idbPut('i', id, d.imgs[id]); } });
     S.pages = d.pages.map(function (p) { return { id: p.id || WB.uid(), objs: p.objs || [], bg: p.bg || '' }; });
-    S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null;
+    S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null; S.cloudKey = null;
     for (var g in S.groups) { S.groups[g].boards = {}; S.groups[g].cur = null; }
     if (S.mode === 'work') { S.mode = 'present'; S.workEnd = null; }
     tv = { kind: 'page' }; V.hist = {}; save(); renderAll(); refreshAll(true);
@@ -1041,6 +1041,44 @@
     var blob = new Blob([JSON.stringify(projectData())], { type: 'application/json' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (S.projName || 'Andice的共用畫板專案') + '_' + stamp() + '.wbproj.json'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 4000);
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000); toast('💾 已下載專案檔');
+  }
+  var CLOUD = 'https://yining-med-tracker-default-rtdb.firebaseio.com/wb/';
+  function newKey() { var a = 'abcdefghijkmnpqrstuvwxyz23456789', k = '', r = new Uint32Array(20); crypto.getRandomValues(r); for (var i = 0; i < 20; i++) k += a[r[i] % a.length]; return k; }
+  function fmtKey(k) { return String(k).match(/.{1,5}/g).join('-'); }
+  function cleanKey(k) { return String(k || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  function cloudSave(fresh) {
+    var key = (!fresh && S.cloudKey) || newKey(), data = projectData();
+    toast('☁️ 正在存到雲端…');
+    fetch(CLOUD + key + '.json', { method: 'PUT', body: JSON.stringify(data) }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      S.cloudKey = key; save();
+      modal(function (box) {
+        box.appendChild(el('h3', '', '☁️ 已存到雲端'));
+        box.appendChild(el('p', '', '在別台電腦打開老師端，按「💾 專案」→「🔑 用金鑰開啟」，輸入這組金鑰就能打開這份專案。之後再按「更新雲端存檔」會存在同一組金鑰。'));
+        var kb = btn('cloud-key big', '<span>' + fmtKey(key) + '</span><em>📋 點一下複製金鑰</em>', function () { copy(fmtKey(key)); kb.querySelector('em').textContent = '✅ 已複製，記得收好（例如貼到備忘錄）'; });
+        box.appendChild(kb);
+        box.appendChild(el('p', 'hint', '⚠️ 拿到金鑰的人都能打開和修改這份專案，請不要公開分享。'));
+        var row = el('div', 'modal-btns'); row.appendChild(btn('btn primary', '好', closeModal)); box.appendChild(row);
+      });
+    }).catch(function () { toast('☁️ 存到雲端失敗，請檢查網路後再試一次'); });
+  }
+  function cloudOpenBox() {
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🔑 用金鑰開啟雲端專案'));
+      box.appendChild(el('p', '', '輸入存到雲端時拿到的金鑰（有沒有打 - 都可以）。目前的畫板頁面會被取代，需要的話請先存檔。'));
+      var i = el('input', 'wide-in'); i.placeholder = '例如 ab3de-fgh45-…'; i.autocomplete = 'off'; box.appendChild(i);
+      var row = el('div', 'modal-btns');
+      row.appendChild(btn('btn', '取消', closeModal));
+      row.appendChild(btn('btn primary', '開啟', function () {
+        var key = cleanKey(i.value); if (key.length < 16) return toast('金鑰不對，請再檢查一次');
+        toast('☁️ 正在讀取…');
+        fetch(CLOUD + key + '.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (d) {
+          if (!d) return toast('找不到這組金鑰的專案，請再檢查一次');
+          if (loadProject(d)) { S.cloudKey = key; save(); closeModal(); toast('☁️ 已打開雲端專案「' + (d.name || '未命名') + '」'); }
+        }).catch(function () { toast('讀取失敗，請檢查網路或金鑰'); });
+      }));
+      box.appendChild(row); setTimeout(function () { i.focus(); }, 30);
+    });
   }
   function hasContent() { return S.pages.length > 1 || S.pages.some(function (p) { return p.objs.length; }); }
   $('b-proj').onclick = function () {
@@ -1056,7 +1094,19 @@
         confirmBox('要開一個新的空白專案嗎？目前的畫板頁面會全部清空（建議先存成專案檔）。', '開新專案', function () { loadProject({ app: 'class-whiteboard', pages: [{ id: WB.uid(), objs: [] }], imgs: {} }); toast('已開新的空白專案'); });
       }));
       box.appendChild(r);
-      box.appendChild(el('p', 'hint', '☁️ 雲端金鑰（在別台電腦輸入金鑰就能開啟）會在下一版加入。'));
+      var cl = el('div', 'cloud-box');
+      cl.appendChild(el('div', 'pop-h', '☁️ 雲端金鑰：在別台電腦輸入金鑰，就能打開同一份專案'));
+      if (S.cloudKey) {
+        var kb = btn('cloud-key', '<span>' + fmtKey(S.cloudKey) + '</span><em>📋 點一下複製金鑰</em>', function () { copy(fmtKey(S.cloudKey)); kb.querySelector('em').textContent = '✅ 已複製，記得收好'; });
+        cl.appendChild(el('div', 'pop-l', '這份專案的金鑰'));
+        cl.appendChild(kb);
+      }
+      var cr = el('div', 'proj-acts');
+      cr.appendChild(btn('btn primary', S.cloudKey ? '☁️ 更新雲端存檔' : '☁️ 存到雲端（產生金鑰）', function () { cloudSave(false); }));
+      if (S.cloudKey) cr.appendChild(btn('btn', '☁️ 另存成新的金鑰', function () { cloudSave(true); }));
+      cr.appendChild(btn('btn', '🔑 用金鑰開啟', cloudOpenBox));
+      cl.appendChild(cr);
+      box.appendChild(cl);
       var row = el('div', 'modal-btns'); row.appendChild(btn('btn', '關閉', closeModal)); box.appendChild(row);
     });
   };
