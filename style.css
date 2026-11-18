@@ -351,3 +351,14 @@ body.swap .host-main .side{order:4}
 body.swap .host-main .work{flex-direction:row-reverse}
 .pages .swap-b{font-weight:900}
 .wb-stage.selecting .wb-obj.lk{cursor:default}
+
+/* 工具欄上方的左右互換鍵：小而獨立，和下面工具隔開避免誤觸 */
+.host .toolbar .tb-swap{align-self:start;justify-self:center;width:52px;height:26px;margin-top:2px;border:1px dashed #b8c1d6;border-radius:13px;background:#f3f5fa;color:#64708a;font-size:15px;font-weight:900;line-height:1;padding:0;cursor:pointer}
+.host .toolbar .tb-swap:hover{background:var(--pri2);color:var(--pri);border-color:var(--pri)}
+/* 工具欄永遠只有一行：螢幕矮時按鈕自動變扁，不會變成兩行 */
+.host .toolbar{display:flex;flex-direction:column;flex-wrap:nowrap;justify-content:flex-start;align-items:center;width:68px;box-sizing:border-box;overflow-y:auto;overflow-x:hidden}
+.host .toolbar>*{flex:0 1 50px;min-height:36px;width:62px;box-sizing:border-box}
+.host .toolbar>.tb{height:auto}
+.host .toolbar>.tcell{display:flex;align-items:center;justify-content:center}
+.host .toolbar>.tb-swap{flex:0 0 26px;min-height:26px;height:26px;width:52px;margin:2px 0 8px}
+@media (max-height:720px){.host .toolbar .tb{font-size:16px}.host .toolbar .tb small{font-size:10px}.host .toolbar .tb .sel-ic{width:20px;height:20px}}

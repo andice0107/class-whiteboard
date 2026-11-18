@@ -294,6 +294,7 @@
   function renderTools() {
     var t = $('toolbar'); t.innerHTML = '';
     function add(b, title) { if (title) b.title = title; t.appendChild(b); return b; }
+    var sw = add(btn('tb-swap', '⇄', function () { setSwap(!document.body.classList.contains('swap')); }), '工具欄和頁面欄左右互換');
     var pk = PENS.filter(function (x) { return x[0] === (tool.pen || ''); })[0] || PENS[0];
     var pb = add(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '<span class="pen-ic" style="--c:' + tool.color + '">' + pk[1] + '</span><small>' + pk[2] + ' ▾</small>', function () { if (tool.mode !== 'pen') setMode('pen'); penPanel(pb); }), '點一下選筆種、顏色、粗細'); pb.dataset.pop = 1;
     var cs = el('div', 'tcell colors three');
