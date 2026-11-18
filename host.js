@@ -94,7 +94,8 @@
   function refresh(sid, force) {
     var st = S.students[sid]; if (!st || !online[sid]) return;
     var v = viewFor(sid), L = lastSent[sid], m = { cid: st.cid, bid: v.bid, pen: v.pen, note: v.note, title: v.title, mode: v.mode, left: v.end ? Math.max(0, v.end - Date.now()) : null, vp: v.vp, bg: bgOf(v.bid) };
-    if (force || !L || L.bid !== v.bid || L.gen !== genOf(v.bid)) { m.t = 'view'; m.objs = objsOf(v.bid) || []; net.send(m, sid); }
+    if (force || !L || L.bid !== v.bid || L.gen !== genOf(v.bid)) { m.t = 'view'; m.objs = objsOf(v.bid) || []; net.send(m, sid);
+      if (V && V.bid === v.bid) m.objs.forEach(function (o) { var vs = o.k === 'v' && V.vt[o.id]; if (vs && vs.s === 1) net.send({ t: 'vid', bid: v.bid, id: o.id, cmd: 'play', at: vs.t || 0 }, sid); }); }
     else if (L.key !== metaKey(v)) { m.t = 'meta'; net.send(m, sid); }
     lastSent[sid] = { bid: v.bid, gen: genOf(v.bid), key: metaKey(v), pen: v.pen, note: v.note };
   }
@@ -938,7 +939,7 @@
       var r = el('div', 'proj-acts');
       r.appendChild(btn('btn primary', '💾 存成專案檔', function () {
         var blob = new Blob([JSON.stringify(projectData())], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (S.projName || 'Andice的共用畫板專案') + '_' + stamp() + '.wbproj.json'; document.body.appendChild(a); a.click(); a.remove();
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (S.projName || 'Andice的共用畫板專案') + '_' + stamp() + '.wbproj.json'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 4000);
         setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000); toast('💾 已下載專案檔');
       }));
       r.appendChild(btn('btn', '📂 開啟專案檔', function () { $('proj-in').click(); }));

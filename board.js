@@ -340,8 +340,10 @@ window.WB = (function () {
     /* YouTube 影片控制 */
     V.vt = {};
     function frameOf(id) { var e = els[id]; return e && e.querySelector('iframe'); }
+    var vpend = {}, vready = {};
     V.video = function (id, cmd, at) {
-      var f = frameOf(id); if (!f) return;
+      var f = frameOf(id);
+      if (!f || !vready[id]) { vpend[id] = { cmd: cmd, at: at, ts: Date.now() }; if (!f) dirty = true; return; }
       function post(func, args) { try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*'); } catch (x) {} }
       if (at != null) post('seekTo', [at, true]);
       if (cmd === 'play') { post('playVideo'); } else if (cmd === 'pause') post('pauseVideo');
@@ -349,10 +351,16 @@ window.WB = (function () {
     window.addEventListener('message', function (ev) {
       if (!/youtube/.test(ev.origin)) return;
       var d; try { d = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data; } catch (x) { return; }
-      if (!d || !d.info) return;
+      if (!d || (!d.info && d.event !== 'onReady')) return;
       for (var id in els) {
         var f = els[id].querySelector('iframe');
         if (f && f.contentWindow === ev.source) {
+          if (!vready[id]) {
+            vready[id] = 1;
+            var pd = vpend[id]; delete vpend[id];
+            if (pd) { var at = pd.at; if (pd.cmd === 'play' && at != null) at += (Date.now() - pd.ts) / 1000; V.video(id, pd.cmd, at); }
+          }
+          if (!d.info) break;
           var st = V.vt[id] || (V.vt[id] = {});
           if (d.info.currentTime != null) st.t = d.info.currentTime;
           if (d.info.playerState != null && d.info.playerState !== st.s) {
