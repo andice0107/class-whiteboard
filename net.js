@@ -21,24 +21,36 @@ window.WBNet = (function () {
       setTimeout(function () { status('online'); }, 30);
       return api;
     }
-    var idx = opt.broker != null ? opt.broker : 0, client = null, tried = 0, ok = false, queue = [];
-    function connect() {
-      status('connecting');
-      client = mqtt.connect(BROKERS[idx], { clientId: 'wb_' + Math.random().toString(16).slice(2, 10), clean: true, connectTimeout: 8000, reconnectPeriod: 2000, keepalive: 30 });
-      var timer = setTimeout(function () { if (!ok && opt.broker == null && tried < BROKERS.length - 1) { tried++; try { client.end(true); } catch (e) {} idx = (idx + 1) % BROKERS.length; connect(); } }, 9000);
-      client.on('connect', function () {
-        clearTimeout(timer); ok = true; api.broker = idx;
-        client.subscribe(subs, { qos: 0 }, function () { status('online'); while (queue.length) { var q = queue.shift(); api.send(q[0], q[1]); } });
+    /* 老師端同時連上所有中繼站，哪一條線的學生都收得到；學生端只連一條 */
+    if (opt.role === 'host') {
+      var cs = BROKERS.map(function (url, i) {
+        var c = mqtt.connect(url, { clientId: 'wbh_' + Math.random().toString(16).slice(2, 10), clean: true, connectTimeout: 20000, reconnectPeriod: 3000, keepalive: 30 });
+        c.on('connect', function () { c.subscribe(subs, { qos: 0 }, function () { upd(); if (opt.onLine) opt.onLine(i); }); });
+        ['reconnect', 'offline', 'error', 'close'].forEach(function (ev) { c.on(ev, upd); });
+        c.on('message', function (t, m) { recv(m.toString()); });
+        return c;
       });
-      client.on('reconnect', function () { status('connecting'); });
-      client.on('offline', function () { status('offline'); });
-      client.on('error', function () { status('offline'); });
-      client.on('message', function (t, m) { recv(m.toString()); });
+      var last = '';
+      function upd() { var n = cs.filter(function (c) { return c.connected; }).length, s = n ? 'online' : 'connecting'; api.lines = n; if (s !== last || true) { last = s; status(s); } }
+      api.send = function (d, to) { var m = JSON.stringify(d); cs.forEach(function (c) { if (c.connected) c.publish(topicFor(to), m, { qos: 0 }); }); };
+      api.close = function () { cs.forEach(function (c) { try { c.end(true); } catch (e) {} }); };
+      status('connecting');
+      return api;
     }
+    var idx = opt.broker != null ? opt.broker : 0, client = null, queue = [];
+    api.broker = idx;
+    status('connecting');
+    client = mqtt.connect(BROKERS[idx], { clientId: 'wb_' + Math.random().toString(16).slice(2, 10), clean: true, connectTimeout: 20000, reconnectPeriod: 2000, keepalive: 30 });
+    client.on('connect', function () {
+      client.subscribe(subs, { qos: 0 }, function () { status('online'); while (queue.length) { var q = queue.shift(); api.send(q[0], q[1]); } });
+    });
+    client.on('reconnect', function () { status('connecting'); });
+    client.on('offline', function () { status('offline'); });
+    client.on('error', function () { status('offline'); });
+    client.on('message', function (t, m) { recv(m.toString()); });
     api.send = function (d, to) { if (client && client.connected) client.publish(topicFor(to), JSON.stringify(d), { qos: 0 }); else if (queue.length < 200) queue.push([d, to]); };
     api.close = function () { try { client.end(true); } catch (e) {} };
-    connect();
     return api;
   }
-  return { open: open, code: code, LOCAL: LOCAL };
+  return { open: open, code: code, LOCAL: LOCAL, N: BROKERS.length };
 })();

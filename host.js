@@ -71,7 +71,8 @@
     online = {}; lastSent = {};
     net = WBNet.open({ code: S.code, role: 'host', broker: S.broker, onMessage: onMsg, onStatus: function (s) {
       $('h-net').className = 'dot ' + s;
-      if (s === 'online') { if (S.broker !== net.broker) { S.broker = net.broker; save(); if (!$('modal').hidden && $('modal-box').classList.contains('join-box')) $('b-join').click(); } net.send({ t: 'hostup' }, '*'); }
+      if (s === 'online' && WBNet.LOCAL) net.send({ t: 'hostup' }, '*');
+    }, onLine: function () { setTimeout(function () { net.send({ t: 'hostup' }, '*'); }, 300);
     } });
     $('h-code').textContent = S.code;
   }
@@ -352,7 +353,7 @@
   /* ---------- 加入 / QR / 開新教室 ---------- */
   function joinUrl() {
     var base = location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '');
-    return base + 'play.html' + (WBNet.LOCAL ? '?local=1' : '') + '#b=' + (S.broker || 0);
+    return base + 'play.html' + (WBNet.LOCAL ? '?local=1' : '');
   }
   function copy(t) { if (navigator.clipboard) navigator.clipboard.writeText(t).catch(function () {}); else { var a = el('textarea'); a.value = t; document.body.appendChild(a); a.select(); try { document.execCommand('copy'); } catch (e) {} a.remove(); } }
   $('b-join').onclick = function () {

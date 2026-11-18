@@ -64,7 +64,7 @@
     tryNo = tryNo || 0;
     stop();
     if (first == null) first = me.b != null ? me.b : (broker || 0);
-    var b = (first + tryNo) % 2;
+    var b = (first + tryNo) % WBNet.N;
     waitScreen('正在進入教室 ' + me.code + '…' + (tryNo ? '（換一條線路再試）' : ''));
     net = WBNet.open({ code: me.code, role: 'student', sid: me.sid, broker: b, onMessage: onMsg, onStatus: function (s) {
       var d = document.querySelector('.st-net'); if (d) d.className = 'st-net dot ' + s;
@@ -75,10 +75,10 @@
     } });
     function fail() {
       if (joined) return;
-      if (tryNo < 1) connect(tryNo + 1, first);
+      if (tryNo < WBNet.N * 2 - 1) connect(tryNo + 1, first);
       else joinScreen('找不到這間教室。請確認教室代碼有沒有打錯，或請老師確認教室已經打開。');
     }
-    joinT = setTimeout(fail, 14000);
+    joinT = setTimeout(fail, 15000);
     pingT = setInterval(function () { if (joined) send({ t: 'ping' }); }, 8000);
     connect.b = b;
   }
