@@ -231,6 +231,7 @@ window.WB = (function () {
     stage.addEventListener('dblclick', function (e) { if (V.tool.mode !== 'select' || V.locked) return; var oe = e.target.closest('.wb-t'); if (oe) V.editText(oe.dataset.id); });
     stage.addEventListener('click', function (e) { if (V.tool.mode === 'select' && e.target.closest('a')) e.preventDefault(); });
     V.editText = function (id) {
+      if (!els[id]) drawObjs();
       var o = find(id), e = els[id]; if (!o || o.k !== 't' || !e) return;
       select(id); editing = id; var t = e.firstChild;
       t.contentEditable = 'true'; t.textContent = o.txt || ''; t._h = null; e.classList.add('editing'); t.focus();

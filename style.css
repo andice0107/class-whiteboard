@@ -149,3 +149,4 @@ body.student.can-draw .stu-top{background:#fff4e0}
 .colors.mini .sw{width:22px;height:22px}
 .wide-in{width:100%;font:inherit;font-size:16px;padding:10px;border:2px solid var(--line);border-radius:10px}
 .toolbar .colors{border:0}
+.wb-txt.vert a{text-orientation:mixed}
