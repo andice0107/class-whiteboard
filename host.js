@@ -1030,7 +1030,7 @@
     if (!d || d.app !== 'class-whiteboard' || !Array.isArray(d.pages) || !d.pages.length) { toast('這不是共用畫板的專案檔'); return false; }
     Object.keys(d.imgs || {}).forEach(function (id) { if (d.imgs[id]) { WB.setImg(id, d.imgs[id]); idbPut('i', id, d.imgs[id]); } });
     S.pages = d.pages.map(function (p) { return { id: p.id || WB.uid(), objs: p.objs || [], bg: p.bg || '' }; });
-    S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null; S.cloudKey = null;
+    S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null; S.cloudKey = null; S.myPid = null;
     for (var g in S.groups) { S.groups[g].boards = {}; S.groups[g].cur = null; }
     if (S.mode === 'work') { S.mode = 'present'; S.workEnd = null; }
     tv = { kind: 'page' }; V.hist = {}; save(); renderAll(); refreshAll(true);
@@ -1080,13 +1080,84 @@
       box.appendChild(row); setTimeout(function () { i.focus(); }, 30);
     });
   }
+  /* ---------- 我的專案：Google 登入，每台電腦都看得到 ---------- */
+  var FB_CFG = { apiKey: 'AIzaSyC5qwepU0PnotyRXzD4S0iTBZhHSiW-pus', authDomain: 'yining-med-tracker.firebaseapp.com', databaseURL: 'https://yining-med-tracker-default-rtdb.firebaseio.com', projectId: 'yining-med-tracker', appId: '1:733833835927:web:72727f17a5aa0cec4d00d2' };
+  var fbApp = null, fbUser = null, fbReady = false;
+  function fb() {
+    if (fbApp || !window.firebase) return fbApp;
+    try {
+      fbApp = firebase.initializeApp(FB_CFG, 'wb');
+      fbApp.auth().onAuthStateChanged(function (u) { fbUser = u; fbReady = true; var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection()); $('b-proj').innerHTML = '💾 專案' + (u ? ' <span class="me-dot" title="已登入 Google">●</span>' : ''); });
+    } catch (e) { fbApp = null; }
+    return fbApp;
+  }
+  (function tryFb(n) { if (!fb() && n < 40) setTimeout(function () { tryFb(n + 1); }, 500); })(0);
+  function myRef(path) { return fbApp.database().ref('wbu/' + fbUser.uid + '/' + path); }
+  function myProjectsSection() {
+    var sec = el('div', 'cloud-box my-proj');
+    sec.appendChild(el('div', 'pop-h', '☁️ 我的專案（用 Google 登入，每台電腦都看得到）'));
+    if (!fb()) { sec.appendChild(el('p', 'hint', '雲端功能載入中，或這台裝置連不到 Google，請稍後再試。')); return sec; }
+    if (!fbReady) { sec.appendChild(el('p', 'hint', '讀取登入狀態中…')); return sec; }
+    if (!fbUser) {
+      sec.appendChild(btn('btn primary g-login', '<b>G</b> 用 Google 帳號登入', function () {
+        var pv = new firebase.auth.GoogleAuthProvider(); pv.setCustomParameters({ prompt: 'select_account' });
+        fbApp.auth().signInWithPopup(pv).catch(function (e) { toast(/popup/.test(e.code || '') ? '登入視窗被擋住了，請允許跳出視窗後再試一次' : '登入沒有完成，請再試一次'); });
+      }));
+      sec.appendChild(el('p', 'hint', '登入後，在任何一台電腦用同一個 Google 帳號登入，就能看到、打開你存過的專案。只有你自己看得到。'));
+      return sec;
+    }
+    var who = el('div', 'pop-row'); who.appendChild(el('span', '', '👤 ' + (fbUser.displayName || fbUser.email || '已登入')));
+    who.appendChild(el('span', 'grow')); who.appendChild(btn('btn sm', '登出', function () { fbApp.auth().signOut(); }));
+    sec.appendChild(who);
+    var acts = el('div', 'proj-acts');
+    acts.appendChild(btn('btn primary', S.myPid ? '☁️ 存回「' + (S.projName || '未命名') + '」' : '☁️ 存到我的專案', function () { mySave(false); }));
+    if (S.myPid) acts.appendChild(btn('btn', '另存成一份新的', function () { mySave(true); }));
+    sec.appendChild(acts);
+    var list = el('div', 'my-list'); list.appendChild(el('p', 'hint', '讀取專案清單中…')); sec.appendChild(list);
+    myRef('list').once('value').then(function (snap) {
+      var v = snap.val() || {}, ids = Object.keys(v).sort(function (a, b) { return (v[b].at || 0) - (v[a].at || 0); });
+      list.innerHTML = '';
+      if (!ids.length) { list.appendChild(el('p', 'hint', '還沒有存過專案。')); return; }
+      ids.forEach(function (id) {
+        var it = v[id], row = el('div', 'my-item' + (id === S.myPid ? ' on' : ''));
+        row.appendChild(el('b', '', esc(it.name || '未命名')));
+        row.appendChild(el('span', 'hint', (it.n || 0) + ' 頁・' + new Date(it.at || 0).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })));
+        row.appendChild(el('span', 'grow'));
+        row.appendChild(btn('btn sm', '開啟', function () { confirmBox('要開啟「' + esc(it.name || '未命名') + '」嗎？目前的畫板頁面會被取代。', '開啟', function () { myOpen(id); }); }));
+        row.appendChild(btn('btn sm ghost del', '🗑', function () { confirmBox('要刪除雲端上的「' + esc(it.name || '未命名') + '」嗎？刪掉就救不回來。', '刪除', function () { myRef('proj/' + id).remove(); myRef('list/' + id).remove().then(function () { if (S.myPid === id) { S.myPid = null; save(); } toast('已刪除'); $('b-proj').click(); }); }); }));
+        list.appendChild(row);
+      });
+    }).catch(function () { list.innerHTML = ''; list.appendChild(el('p', 'hint', '讀不到專案清單，請檢查網路。')); });
+    return sec;
+  }
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function mySave(asNew) {
+    if (!fbUser) return;
+    if (!S.projName) S.projName = '未命名 ' + stamp();
+    var pid = (!asNew && S.myPid) || WB.uid(), d = projectData();
+    toast('☁️ 正在存到我的專案…');
+    myRef('proj/' + pid).set(JSON.parse(JSON.stringify(d))).then(function () {
+      return myRef('list/' + pid).set({ name: S.projName, at: Date.now(), n: S.pages.length });
+    }).then(function () { S.myPid = pid; save(); toast('☁️ 已存到我的專案「' + S.projName + '」'); $('b-proj').click(); })
+      .catch(function () { toast('存檔失敗，請檢查網路後再試一次'); });
+  }
+  function myOpen(pid) {
+    toast('☁️ 正在打開…');
+    myRef('proj/' + pid).once('value').then(function (snap) {
+      var d = snap.val(); if (!d) return toast('找不到這份專案');
+      if (loadProject(d)) { S.myPid = pid; save(); closeModal(); toast('☁️ 已打開「' + (d.name || '未命名') + '」'); }
+    }).catch(function () { toast('打開失敗，請檢查網路'); });
+  }
   function hasContent() { return S.pages.length > 1 || S.pages.some(function (p) { return p.objs.length; }); }
   $('b-proj').onclick = function () {
     modal(function (box) {
+      box.classList.add('proj-box');
       box.appendChild(el('h3', '', '💾 專案'));
-      box.appendChild(el('p', '', '專案包含所有畫板頁面、圖片、文字、圖形和便利貼（不含學生名單和作答）。存成檔案後，可以放到雲端硬碟，在別台電腦用「開啟專案檔」繼續編輯。'));
+      box.appendChild(el('p', 'hint', '專案包含所有畫板頁面、圖片、文字、圖形、便利貼和影片（不含學生名單和作答）。'));
       var nm = el('input', 'wide-in'); nm.placeholder = '專案名稱（例如：三上數學第5課）'; nm.value = S.projName || ''; nm.oninput = function () { S.projName = nm.value.trim(); save(); };
       box.appendChild(nm);
+      box.appendChild(myProjectsSection());
+      box.appendChild(el('div', 'pop-l sec', '📁 專案檔（存在這台電腦）'));
       var r = el('div', 'proj-acts');
       r.appendChild(btn('btn primary', '💾 存成專案檔', saveProjectFile));
       r.appendChild(btn('btn', '📂 開啟專案檔', function () { $('proj-in').click(); }));
@@ -1095,7 +1166,7 @@
       }));
       box.appendChild(r);
       var cl = el('div', 'cloud-box');
-      cl.appendChild(el('div', 'pop-h', '☁️ 雲端金鑰：在別台電腦輸入金鑰，就能打開同一份專案'));
+      cl.appendChild(el('div', 'pop-h', '🔑 用金鑰分享：把金鑰給別人（或別台電腦）就能打開這一份'));
       if (S.cloudKey) {
         var kb = btn('cloud-key', '<span>' + fmtKey(S.cloudKey) + '</span><em>📋 點一下複製金鑰</em>', function () { copy(fmtKey(S.cloudKey)); kb.querySelector('em').textContent = '✅ 已複製，記得收好'; });
         cl.appendChild(el('div', 'pop-l', '這份專案的金鑰'));
