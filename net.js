@@ -11,12 +11,30 @@ window.WBNet = (function () {
     var R = PREFIX + opt.code + '/';
     var subs = opt.role === 'host' ? [R + 'up'] : [R + 'all', R + 's/' + opt.sid];
     var api = { broker: 0 }, status = opt.onStatus || function () {};
-    function recv(txt) { var d; try { d = JSON.parse(txt); } catch (e) { return; } opt.onMessage(d); }
+    var parts = {};
+    function recv(txt) {
+      var d; try { d = JSON.parse(txt); } catch (e) { return; }
+      if (d && d.t === '_c') { /* 大訊息分段重組 */
+        var P = parts[d.k] || (parts[d.k] = { n: d.n, got: 0, a: [], at: Date.now() });
+        if (P.a[d.i] == null) { P.a[d.i] = d.s; P.got++; }
+        if (P.got === P.n) { delete parts[d.k]; recv(P.a.join('')); }
+        for (var k in parts) if (Date.now() - parts[k].at > 60000) delete parts[k];
+        return;
+      }
+      opt.onMessage(d);
+    }
+    var CH = 48000;
+    function pack(d) {
+      var m = JSON.stringify(d); if (m.length <= CH) return [m];
+      var k = Math.random().toString(36).slice(2, 10), n = Math.ceil(m.length / CH), out = [];
+      for (var i = 0; i < n; i++) out.push(JSON.stringify({ t: '_c', k: k, i: i, n: n, s: m.slice(i * CH, (i + 1) * CH) }));
+      return out;
+    }
     function topicFor(to) { return opt.role === 'host' ? (to === '*' ? R + 'all' : R + 's/' + to) : R + 'up'; }
     if (LOCAL) {
       var bc = new BroadcastChannel('wb-' + opt.code);
       bc.onmessage = function (e) { if (subs.indexOf(e.data.t) >= 0) recv(e.data.m); };
-      api.send = function (d, to) { bc.postMessage({ t: topicFor(to), m: JSON.stringify(d) }); };
+      api.send = function (d, to) { pack(d).forEach(function (m) { bc.postMessage({ t: topicFor(to), m: m }); }); };
       api.close = function () { bc.close(); };
       setTimeout(function () { status('online'); }, 30);
       return api;
@@ -32,7 +50,7 @@ window.WBNet = (function () {
       });
       var last = '';
       function upd() { var n = cs.filter(function (c) { return c.connected; }).length, s = n ? 'online' : 'connecting'; api.lines = n; if (s !== last || true) { last = s; status(s); } }
-      api.send = function (d, to) { var m = JSON.stringify(d); cs.forEach(function (c) { if (c.connected) c.publish(topicFor(to), m, { qos: 0 }); }); };
+      api.send = function (d, to) { var ms = pack(d); cs.forEach(function (c) { if (c.connected) ms.forEach(function (m) { c.publish(topicFor(to), m, { qos: 0 }); }); }); };
       api.close = function () { cs.forEach(function (c) { try { c.end(true); } catch (e) {} }); };
       status('connecting');
       return api;
@@ -48,7 +66,7 @@ window.WBNet = (function () {
     client.on('offline', function () { status('offline'); });
     client.on('error', function () { status('offline'); });
     client.on('message', function (t, m) { recv(m.toString()); });
-    api.send = function (d, to) { if (client && client.connected) client.publish(topicFor(to), JSON.stringify(d), { qos: 0 }); else if (queue.length < 200) queue.push([d, to]); };
+    api.send = function (d, to) { if (client && client.connected) pack(d).forEach(function (m) { client.publish(topicFor(to), m, { qos: 0 }); }); else if (queue.length < 200) queue.push([d, to]); };
     api.close = function () { try { client.end(true); } catch (e) {} };
     return api;
   }

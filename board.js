@@ -18,11 +18,38 @@ window.WB = (function () {
     ctx.lineTo(p[n * 2 - 2], p[n * 2 - 1]);
     ctx.stroke();
   }
-  /* 畫整張畫板；scale = 畫布像素 / 1600 */
-  function render(ctx, objs, scale, bg) {
+  /* 圖片庫：id → dataURL；所有畫板共用 */
+  var imgs = {}, imgEls = {}, imgWait = [];
+  function setImg(id, d) { imgs[id] = d; delete imgEls[id]; imgWait.forEach(function (f) { f(id); }); }
+  function imgEl(id) {
+    if (imgEls[id]) return imgEls[id];
+    if (!imgs[id]) return null;
+    var im = new Image(); im.onload = function () { imgWait.forEach(function (f) { f(id); }); }; im.src = imgs[id]; imgEls[id] = im; return im;
+  }
+  function missingImgs(objs) { var m = {}; objs.forEach(function (o) { if (o.k === 'i' && !imgs[o.src]) m[o.src] = 1; }); return Object.keys(m); }
+  var URL_RE = /(https?:\/\/[^\s<>"'，。、；！？）」』]+|www\.[^\s<>"'，。、；！？）」』]+)/g;
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function linkify(t) {
+    return esc(t || '').replace(URL_RE, function (u) { var h = /^www\./.test(u) ? 'https://' + u : u; return '<a href="' + h + '" target="_blank" rel="noopener">' + u + '</a>'; }).replace(/\n/g, '<br>');
+  }
+  function drawObj(ctx, o) {
+    ctx.save();
+    ctx.translate(o.x + o.w / 2, o.y + o.h / 2); ctx.rotate((o.r || 0) * Math.PI / 180); if (o.fx) ctx.scale(-1, 1);
+    if (o.k === 'i') { var im = imgEl(o.src); if (im && im.complete && im.naturalWidth) ctx.drawImage(im, -o.w / 2, -o.h / 2, o.w, o.h); else { ctx.fillStyle = '#eef1f7'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); } }
+    else if (o.k === 't') {
+      var fs = o.fs || 36; ctx.fillStyle = o.c || '#111'; ctx.font = fs + 'px "PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline = 'top';
+      var lines = String(o.txt || '').split('\n');
+      if (!o.v) lines.forEach(function (l, i) { ctx.fillText(l, -o.w / 2 + 8, -o.h / 2 + 6 + i * fs * 1.35, o.w - 16); });
+      else lines.forEach(function (l, i) { var x = o.w / 2 - 8 - (i + 1) * fs * 1.35; Array.from(l).forEach(function (ch, j) { ctx.fillText(ch, x, -o.h / 2 + 6 + j * fs * 1.1); }); });
+    }
+    ctx.restore();
+  }
+  /* 畫整張畫板；scale = 畫布像素 / 1600；full=true 時連圖片文字一起畫（縮圖用） */
+  function render(ctx, objs, scale, bg, full) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = bg || '#fff'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    if (bg) { ctx.fillStyle = bg; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); } else ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    if (full) for (var j = 0; j < objs.length; j++) if (objs[j].k !== 's') drawObj(ctx, objs[j]);
     for (var i = 0; i < objs.length; i++) { var o = objs[i]; if (o.k === 's') drawStroke(ctx, o); }
   }
   /* 把稀疏的點補密，讓局部擦除準確 */
@@ -49,21 +76,27 @@ window.WB = (function () {
     if (cur.length) segs.push(cur);
     return segs.filter(function (s) { return s.length >= 4; }).map(function (s) { return { id: uid(), k: 's', by: o.by, c: o.c, w: o.w, p: s }; });
   }
+  /* del 和 add 有同一個 id 時是「修改」，原地替換、不改變上下層順序 */
   function applyOp(objs, op) {
+    var addIds = {}; (op.add || []).forEach(function (o) { addIds[o.id] = o; });
     if (op.del && op.del.length) {
-      var dm = {}; op.del.forEach(function (id) { dm[id] = 1; });
+      var dm = {}; op.del.forEach(function (id) { if (!addIds[id]) dm[id] = 1; });
       for (var i = objs.length - 1; i >= 0; i--) if (dm[objs[i].id]) objs.splice(i, 1);
     }
-    if (op.add) op.add.forEach(function (o) { if (!objs.some(function (x) { return x.id === o.id; })) objs.push(o); });
+    (op.add || []).forEach(function (o) {
+      for (var j = 0; j < objs.length; j++) if (objs[j].id === o.id) { objs[j] = o; return; }
+      objs.push(o);
+    });
     return objs;
   }
-
   /* 互動畫板 */
   function view(host, opt) {
     var stage = document.createElement('div'); stage.className = 'wb-stage';
     var base = document.createElement('canvas'), top = document.createElement('canvas');
     base.className = 'wb-base'; top.className = 'wb-top';
-    stage.appendChild(base); stage.appendChild(top); host.appendChild(stage);
+    var layer = document.createElement('div'); layer.className = 'wb-objs';
+    var sel = document.createElement('div'); sel.className = 'wb-sel';
+    stage.appendChild(layer); stage.appendChild(base); stage.appendChild(top); stage.appendChild(sel); host.appendChild(stage);
     var bctx = base.getContext('2d'), tctx = top.getContext('2d');
     var V = { objs: [], bid: null, tool: { mode: 'pen', color: '#111', width: 4 }, editable: false, hist: {} };
     var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null;
@@ -74,11 +107,13 @@ window.WB = (function () {
       var w = Math.floor(W * scale), h = Math.floor(H * scale);
       stage.style.width = w + 'px'; stage.style.height = h + 'px';
       [base, top].forEach(function (c) { c.width = Math.floor(w * dpr); c.height = Math.floor(h * dpr); c.style.width = w + 'px'; c.style.height = h + 'px'; });
+      [layer, sel].forEach(function (l) { l.style.transform = 'scale(' + scale + ')'; });
+      stage.style.setProperty('--inv', 1 / scale);
       dirty = true;
     }
     var ro = window.ResizeObserver ? new ResizeObserver(fit) : null; if (ro) ro.observe(host); else window.addEventListener('resize', fit);
     function frame() {
-      if (dirty) { dirty = false; render(bctx, V.objs, scale * dpr); }
+      if (dirty) { dirty = false; render(bctx, V.objs, scale * dpr, null, false); drawObjs(); }
       tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, top.width, top.height);
       tctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
       var now = Date.now();
@@ -88,6 +123,129 @@ window.WB = (function () {
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
+
+
+    /* ---------- 圖片、文字框（DOM 圖層，連結可以點） ---------- */
+    var els = {}, editing = null;
+    imgWait.push(function () { dirty = true; });
+    function drawObjs() {
+      var seen = {};
+      V.objs.forEach(function (o) {
+        if (o.k === 's') return;
+        seen[o.id] = 1;
+        var e = els[o.id];
+        if (!e) {
+          e = document.createElement('div'); e.className = 'wb-obj wb-' + o.k; e.dataset.id = o.id;
+          if (o.k === 'i') e.appendChild(document.createElement('img'));
+          else e.appendChild(document.createElement('div')).className = 'wb-txt';
+          els[o.id] = e;
+        }
+        e.style.left = o.x + 'px'; e.style.top = o.y + 'px'; e.style.width = o.w + 'px'; e.style.height = o.h + 'px';
+        e.style.transform = 'rotate(' + (o.r || 0) + 'deg)' + (o.fx ? ' scaleX(-1)' : '');
+        e.classList.toggle('sel', V.sel === o.id);
+        if (o.k === 'i') { var im = e.firstChild, src = imgs[o.src] || ''; if (im.getAttribute('src') !== src) { if (src) im.src = src; else im.removeAttribute('src'); } e.classList.toggle('loading', !src); }
+        else {
+          var t = e.firstChild; t.style.fontSize = (o.fs || 36) + 'px'; t.style.color = o.c || '#111';
+          t.classList.toggle('vert', !!o.v);
+          if (editing !== o.id) { var h = linkify(o.txt) || '<span class="ph">（點兩下輸入文字）</span>'; if (t._h !== h) { t.innerHTML = h; t._h = h; } }
+        }
+        layer.appendChild(e);
+      });
+      for (var id in els) if (!seen[id]) { els[id].remove(); delete els[id]; if (V.sel === id) select(null); }
+      drawSel();
+    }
+    function find(id) { for (var i = 0; i < V.objs.length; i++) if (V.objs[i].id === id) return V.objs[i]; return null; }
+    function select(id) { if (V.sel === id) return; finishEdit(); V.sel = id; dirty = true; opt.onSelect && opt.onSelect(id ? find(id) : null); }
+    V.select = select;
+    function drawSel() {
+      var o = V.sel && find(V.sel);
+      if (!o || V.tool.mode !== 'select') { sel.innerHTML = ''; sel._id = null; return; }
+      if (sel._id !== o.id) {
+        sel.innerHTML = '<div class="box"><i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i><i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i><i class="rot" data-h="rot">⟳</i></div>';
+        sel._id = o.id;
+      }
+      var b = sel.firstChild;
+      b.style.left = o.x + 'px'; b.style.top = o.y + 'px'; b.style.width = o.w + 'px'; b.style.height = o.h + 'px';
+      b.style.transform = 'rotate(' + (o.r || 0) + 'deg)';
+    }
+    /* 改物件：final=false 只同步不記上一步 */
+    var dragStart = null;
+    function change(o, patch, final, orig, noSend) {
+      var n = {}; for (var k in o) n[k] = o[k]; for (var k2 in patch) n[k2] = patch[k2];
+      var i = V.objs.indexOf(o); V.objs[i] = n; dirty = true;
+      if (final) { var before = orig || o; if (opt.onOp) { hist().push({ add: [n], rem: [before] }); opt.onOp(V.bid, { del: [n.id], add: [n] }); } }
+      else if (opt.onOp && !noSend) opt.onOp(V.bid, { del: [n.id], add: [n] }, true);
+      opt.onSelect && V.sel === n.id && opt.onSelect(n);
+      return n;
+    }
+    V.change = function (patch) { var o = V.sel && find(V.sel); if (o) change(o, patch, true); };
+    V.addObj = function (o) { V.objs.push(o); dirty = true; commit([o], []); select(o.id); };
+    V.deleteSel = function () { var o = V.sel && find(V.sel); if (!o) return; select(null); applyOp(V.objs, { del: [o.id] }); dirty = true; commit([], [o]); };
+    var lastSync = 0;
+    function onDown(e) {
+      if (V.tool.mode !== 'select' || V.locked) return;
+      var h = e.target.dataset && e.target.dataset.h, oe = e.target.closest('.wb-obj');
+      var o = h ? find(V.sel) : (oe ? find(oe.dataset.id) : null);
+      if (!o) { select(null); return; }
+      if (editing === o.id) return;
+      e.preventDefault();
+      if (!h) select(o.id);
+      var p = pos(e), cx = o.x + o.w / 2, cy = o.y + o.h / 2, th = (o.r || 0) * Math.PI / 180;
+      dragStart = { o: o, orig: o, h: h || 'move', p: p, cx: cx, cy: cy, th: th, moved: false, link: e.target.closest('a'), id: e.pointerId };
+      try { stage.setPointerCapture(e.pointerId); } catch (x) {}
+    }
+    function onMove(e) {
+      var D = dragStart; if (!D || e.pointerId !== D.id) return;
+      var p = pos(e), o = find(D.o.id); if (!o) { dragStart = null; return; }
+      if (!D.moved && Math.abs(p[0] - D.p[0]) + Math.abs(p[1] - D.p[1]) < 4) return;
+      D.moved = true;
+      var patch;
+      if (D.h === 'move') patch = { x: D.orig.x + p[0] - D.p[0], y: D.orig.y + p[1] - D.p[1] };
+      else if (D.h === 'rot') {
+        var a = Math.atan2(p[1] - D.cy, p[0] - D.cx) * 180 / Math.PI + 90; a = (a + 360) % 360;
+        var sn = Math.round(a / 45) * 45; if (Math.abs(a - sn) < 4) a = sn % 360;
+        patch = { r: Math.round(a) };
+      } else {
+        var sx = D.h.indexOf('e') >= 0 ? 1 : -1, sy = D.h.indexOf('s') >= 0 ? 1 : -1;
+        var dx = p[0] - D.cx, dy = p[1] - D.cy, c = Math.cos(-D.th), s2 = Math.sin(-D.th);
+        var lx = dx * c - dy * s2, ly = dx * s2 + dy * c;
+        var ox = -sx * D.orig.w / 2, oy = -sy * D.orig.h / 2;
+        var w = Math.max(30, sx * (lx - ox)), hh = Math.max(30, sy * (ly - oy));
+        if (D.orig.k === 'i') { var k = Math.max(w / D.orig.w, hh / D.orig.h); w = D.orig.w * k; hh = D.orig.h * k; }
+        var mx = ox + sx * w / 2, my = oy + sy * hh / 2, c2 = Math.cos(D.th), s3 = Math.sin(D.th);
+        var ncx = D.cx + mx * c2 - my * s3, ncy = D.cy + mx * s3 + my * c2;
+        patch = { x: Math.round(ncx - w / 2), y: Math.round(ncy - hh / 2), w: Math.round(w), h: Math.round(hh) };
+      }
+      var sync = Date.now() - lastSync > 150; if (sync) lastSync = Date.now();
+      D.o = change(o, patch, false, null, !sync);
+    }
+    function onUp(e) {
+      var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
+      var o = find(D.o.id);
+      if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); return; }
+      if (o) change(o, {}, true, D.orig);
+    }
+    stage.addEventListener('pointerdown', onDown);
+    stage.addEventListener('pointermove', onMove);
+    stage.addEventListener('pointerup', onUp); stage.addEventListener('pointercancel', onUp);
+    stage.addEventListener('dblclick', function (e) { if (V.tool.mode !== 'select' || V.locked) return; var oe = e.target.closest('.wb-t'); if (oe) V.editText(oe.dataset.id); });
+    stage.addEventListener('click', function (e) { if (V.tool.mode === 'select' && e.target.closest('a')) e.preventDefault(); });
+    V.editText = function (id) {
+      var o = find(id), e = els[id]; if (!o || o.k !== 't' || !e) return;
+      select(id); editing = id; var t = e.firstChild;
+      t.contentEditable = 'true'; t.textContent = o.txt || ''; t._h = null; e.classList.add('editing'); t.focus();
+      var r = document.createRange(); r.selectNodeContents(t); r.collapse(false); var sl = getSelection(); sl.removeAllRanges(); sl.addRange(r);
+      t.onblur = finishEdit;
+      t.onkeydown = function (k) { if (k.key === 'Escape') t.blur(); k.stopPropagation(); };
+    };
+    function finishEdit() {
+      if (!editing) return; var id = editing; editing = null;
+      var e = els[id], o = find(id); if (!e || !o) return;
+      var t = e.firstChild; t.contentEditable = 'false'; e.classList.remove('editing'); t.onblur = null;
+      var txt = t.innerText.replace(/\n$/, ''); t._h = null;
+      if (txt !== (o.txt || '')) change(o, { txt: txt }, true); else dirty = true;
+    }
+    V.finishEdit = finishEdit;
 
     function pos(e) { var r = top.getBoundingClientRect(); return [Math.round((e.clientX - r.left) / scale), Math.round((e.clientY - r.top) / scale)]; }
     function hist() { return V.hist[V.bid] || (V.hist[V.bid] = []); }
@@ -149,7 +307,7 @@ window.WB = (function () {
     top.addEventListener('pointerup', end); top.addEventListener('pointercancel', end);
     top.addEventListener('touchstart', function (e) { if (V.editable) e.preventDefault(); }, { passive: false });
 
-    V.load = function (bid, objs) { V.bid = bid; V.objs = objs; lives = {}; mine = null; erasing = null; dirty = true; };
+    V.load = function (bid, objs) { finishEdit(); V.sel = null; if (opt.onSelect) opt.onSelect(null); V.bid = bid; V.objs = objs; lives = {}; mine = null; erasing = null; dirty = true; };
     V.apply = function (bid, op) { if (bid !== V.bid) return; applyOp(V.objs, op); (op.add || []).forEach(function (o) { delete lives[o.id]; }); dirty = true; };
     V.live = function (bid, o) { if (bid !== V.bid) return; lives[o.id] = { o: o, t: Date.now() }; };
     V.undo = function () {
@@ -171,11 +329,20 @@ window.WB = (function () {
       if (!rem.length) return false;
       applyOp(V.objs, { del: rem.map(function (o) { return o.id; }) }); dirty = true; commit([], rem); return true;
     };
-    V.setEditable = function (b) { V.editable = b; top.style.cursor = b ? (V.tool.mode === 'erase' ? 'cell' : 'crosshair') : 'default'; top.style.touchAction = b ? 'none' : 'auto'; };
+    V.setEditable = function (b) {
+      V.editable = b; var m = V.tool.mode, draw = b && (m === 'pen' || m === 'erase');
+      top.style.pointerEvents = draw ? 'auto' : 'none';
+      top.style.cursor = m === 'erase' ? 'cell' : 'crosshair'; top.style.touchAction = draw ? 'none' : 'auto';
+      stage.classList.toggle('selecting', b && m === 'select' && !V.locked);
+      stage.style.touchAction = b && m === 'select' ? 'none' : '';
+      if (m !== 'select') { finishEdit(); if (V.sel) select(null); }
+      dirty = true;
+    };
+    V.setLocked = function (b) { V.locked = b; if (b) select(null); V.setEditable(V.editable); };
     V.setTool = function (t) { for (var k in t) V.tool[k] = t[k]; V.setEditable(V.editable); };
     V.refit = fit;
     fit();
     return V;
   }
-  return { W: W, H: H, uid: uid, clone: clone, render: render, applyOp: applyOp, view: view };
+  return { W: W, H: H, uid: uid, clone: clone, render: render, applyOp: applyOp, view: view, imgs: imgs, setImg: setImg, missingImgs: missingImgs, onImg: function (f) { imgWait.push(f); }, linkify: linkify };
 })();

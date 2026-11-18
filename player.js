@@ -89,14 +89,20 @@
       case 'welcome': if (!joined) { joined = true; clearTimeout(joinT); me.b = connect.b; saveMe(); boardScreen(); } break;
       case 'view':
         if (!joined) { joined = true; clearTimeout(joinT); me.b = connect.b; saveMe(); boardScreen(); }
-        V.load(d.bid, d.objs || []); setMeta(d); break;
+        V.load(d.bid, d.objs || []); setMeta(d); needImgs(d.objs || []); break;
       case 'meta': setMeta(d); break;
-      case 'op': if (V && d.from !== me.sid) V.apply(d.bid, d.op); break;
+      case 'op': if (V && d.from !== me.sid) { V.apply(d.bid, d.op); needImgs(d.op.add || []); } break;
+      case 'img': if (d.id && d.d) { delete asked[d.id]; WB.setImg(d.id, d.d); } break;
       case 'live': if (V && d.from !== me.sid && d.o && d.o.by !== me.sid) V.live(d.bid, d.o); break;
       case 'hostup': send({ t: 'join' }); break;
       case 'replaced': if (d.cid === me.cid) { stop(); infoScreen('這個學號已經在另一台裝置登入了。', '在這台繼續用', function () { connect(0); }); } break;
       case 'closed': stop(); infoScreen('老師已經關閉這間教室了。', '加入新的教室', function () { joinScreen(); }); break;
     }
+  }
+  var asked = {};
+  function needImgs(objs) {
+    var ids = WB.missingImgs(objs).filter(function (id) { return !asked[id] || Date.now() - asked[id] > 15000; });
+    if (!ids.length) return; ids.forEach(function (id) { asked[id] = Date.now(); }); send({ t: 'needimg', ids: ids });
   }
   function infoScreen(t, label, fn) {
     var app = $('app'); app.innerHTML = ''; app.className = 'join-wrap';
@@ -141,6 +147,7 @@
     }
     tb.appendChild(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '✏️<small>黑筆</small>', function () { tool.mode = 'pen'; V.setTool(tool); renderTools(); }));
     tb.appendChild(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { tool.mode = 'erase'; V.setTool(tool); renderTools(); }));
+    tb.appendChild(btn('tb' + (tool.mode === 'none' ? ' on' : ''), '👆<small>點連結</small>', function () { tool.mode = 'none'; V.setTool(tool); renderTools(); }));
     var u = btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); }); u.disabled = !V.canUndo(); tb.appendChild(u);
     tb.appendChild(btn('tb', '🗑️<small>全消除</small>', function () { if (confirm('要把你自己畫的全部擦掉嗎？')) { V.clear(false); renderTools(); } }));
   }

@@ -13,7 +13,7 @@
       code: WBNet.code(), broker: null,
       pages: keepPages && S ? S.pages : [p], cur: keepPages && S ? S.cur : p.id,
       mode: 'present', cast: null, assignAll: null,
-      groups: {}, students: {}, penAll: true, wallShow: false, show: {}
+      groups: {}, students: {}, penAll: true, wallShow: false, show: {}, lock: keepPages && S ? S.lock : false
     };
   }
   try { S = JSON.parse(localStorage.getItem(KEY)); } catch (e) { S = null; }
@@ -114,6 +114,8 @@
       d.o.c = '#111111';
       distribute(d.bid, { t: 'live', o: d.o }, sid);
       if (V.bid === d.bid) V.live(d.bid, d.o);
+    } else if (d.t === 'needimg' && Array.isArray(d.ids)) {
+      d.ids.slice(0, 20).forEach(function (id) { if (WB.imgs[id]) net.send({ t: 'img', cid: st.cid, id: id, d: WB.imgs[id] }, sid); });
     } else if (d.t === 'sync') {
       refresh(sid, true);
     }
@@ -127,11 +129,12 @@
   /* ---------- 老師的畫板 ---------- */
   var V = WB.view($('board-host'), {
     me: 'T', canErase: function () { return true; },
-    onOp: function (bid, op) {
+    onOp: function (bid, op, temp) {
       WB.applyOp(objsOf(bid) || [], op);
       distribute(bid, { t: 'op', op: op });
-      boardChanged(bid); save(); renderTools();
+      boardChanged(bid); save(); if (!temp) renderTools();
     },
+    onSelect: function () { renderObjBar(); },
     onLive: function (bid, o) { distribute(bid, { t: 'live', o: o }); }
   });
   var tool = { mode: 'pen', color: COLORS[1], width: WIDTHS[1] };
@@ -160,22 +163,158 @@
       if (S.cast) c.appendChild(btn('btn sm', '⏹ 停止分享，改回看老師', function () { S.cast = null; save(); refreshAll(); renderCtx(); renderWall(); }));
     }
   }
+  function setMode(m) { tool.mode = m; V.setTool(tool); renderTools(); }
   function renderTools() {
     var t = $('toolbar'); t.innerHTML = '';
-    t.appendChild(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '✏️<small>畫筆</small>', function () { tool.mode = 'pen'; V.setTool(tool); renderTools(); }));
+    var g1 = el('div', 'tgrp');
+    g1.appendChild(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '✏️<small>畫筆</small>', function () { setMode('pen'); }));
     var cs = el('div', 'colors');
-    COLORS.forEach(function (c) { var b = btn('sw' + (tool.mode === 'pen' && tool.color === c ? ' on' : ''), '', function () { tool.mode = 'pen'; tool.color = c; V.setTool(tool); renderTools(); }); b.style.background = c; b.title = c; cs.appendChild(b); });
-    t.appendChild(cs);
+    COLORS.forEach(function (c) { var b = btn('sw' + (tool.mode === 'pen' && tool.color === c ? ' on' : ''), '', function () { tool.color = c; setMode('pen'); }); b.style.background = c; b.title = c; cs.appendChild(b); });
+    g1.appendChild(cs);
     var ws = el('div', 'widths');
-    WIDTHS.forEach(function (w) { var b = btn('wd' + (tool.width === w ? ' on' : ''), '<i style="width:' + (w + 4) + 'px;height:' + (w + 4) + 'px"></i>', function () { tool.width = w; if (tool.mode !== 'pen') tool.mode = 'pen'; V.setTool(tool); renderTools(); }); ws.appendChild(b); });
-    t.appendChild(ws);
-    t.appendChild(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { tool.mode = 'erase'; V.setTool(tool); renderTools(); }));
-    var u = btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); }); u.disabled = !V.canUndo(); t.appendChild(u);
-    t.appendChild(btn('tb', '🗑️<small>全消除</small>', function () {
-      confirmBox('要把這一頁的筆劃全部擦掉嗎？（含學生的筆劃，按「上一步」可以救回來）', '全部擦掉', function () { V.clear(true); renderTools(); });
+    WIDTHS.forEach(function (w) { var b = btn('wd' + (tool.width === w ? ' on' : ''), '<i style="width:' + (w + 4) + 'px;height:' + (w + 4) + 'px"></i>', function () { tool.width = w; setMode('pen'); }); ws.appendChild(b); });
+    g1.appendChild(ws);
+    g1.appendChild(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { setMode('erase'); }));
+    t.appendChild(g1);
+    var g2 = el('div', 'tgrp');
+    g2.appendChild(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動物件</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前是鎖定的，要先按「解鎖物件」才能移動'); }));
+    g2.appendChild(btn('tb', '🖼️<small>圖片</small>', function () { $('file-in').click(); }));
+    g2.appendChild(btn('tb', '📋<small>貼上</small>', pasteButton));
+    g2.appendChild(btn('tb', '🔤<small>橫式文字</small>', function () { addText('', false); }));
+    g2.appendChild(btn('tb', '<span class="vt">文</span><small>直式文字</small>', function () { addText('', true); }));
+    g2.appendChild(btn('tb', '🔗<small>連結</small>', addLinkBox));
+    g2.appendChild(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '物件已鎖定' : '鎖定物件') + '</small>', function () {
+      S.lock = !S.lock; save(); V.setLocked(S.lock); renderTools();
+      toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解鎖，可以用「移動物件」調整');
     }));
+    t.appendChild(g2);
+    var g3 = el('div', 'tgrp');
+    var u = btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); }); u.disabled = !V.canUndo(); g3.appendChild(u);
+    g3.appendChild(btn('tb', '🗑️<small>全消除</small>', function () {
+      confirmBox('要把這一頁的筆劃全部擦掉嗎？（含學生的筆劃，圖片和文字框不會被擦掉；按「上一步」可以救回來）', '全部擦掉', function () { V.clear(true); renderTools(); });
+    }));
+    t.appendChild(g3);
+    renderObjBar();
   }
-  document.addEventListener('keydown', function (e) { if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); V.undo(); renderTools(); } });
+  /* 選到物件時出現的調整列 */
+  function renderObjBar() {
+    var b = $('objbar'), o = V.sel && V.objs.filter(function (x) { return x.id === V.sel; })[0];
+    if (!o || tool.mode !== 'select') { b.hidden = true; return; }
+    b.hidden = false; b.innerHTML = '';
+    b.appendChild(el('b', '', o.k === 'i' ? '🖼️ 圖片' : '🔤 文字框'));
+    var ang = el('label', 'ang', '旋轉 '); var ai = el('input'); ai.type = 'number'; ai.min = 0; ai.max = 360; ai.value = o.r || 0;
+    ai.onchange = function () { var v = Math.round(+ai.value) || 0; v = ((v % 360) + 360) % 360; if (v === 0 && +ai.value === 360) v = 360; V.change({ r: v }); };
+    ang.appendChild(ai); ang.appendChild(document.createTextNode(' 度')); b.appendChild(ang);
+    [[-15, '↺15°'], [15, '↻15°'], [90, '↻90°']].forEach(function (a) { b.appendChild(btn('btn sm', a[1], function () { V.change({ r: (((o.r || 0) + a[0]) % 360 + 360) % 360 }); })); });
+    b.appendChild(btn('btn sm' + (o.fx ? ' primary' : ''), '🪞 鏡像翻面', function () { V.change({ fx: !o.fx }); }));
+    if (o.k === 't') {
+      b.appendChild(btn('btn sm', '✏️ 編輯文字', function () { V.editText(o.id); }));
+      b.appendChild(btn('btn sm' + (!o.v ? ' primary' : ''), '橫式', function () { if (o.v) V.change({ v: false, w: o.h, h: o.w }); }));
+      b.appendChild(btn('btn sm' + (o.v ? ' primary' : ''), '直式', function () { if (!o.v) V.change({ v: true, w: o.h, h: o.w }); }));
+      b.appendChild(btn('btn sm', 'A－', function () { V.change({ fs: Math.max(14, (o.fs || 36) - 6) }); }));
+      b.appendChild(btn('btn sm', 'A＋', function () { V.change({ fs: Math.min(160, (o.fs || 36) + 6) }); }));
+      var cs = el('span', 'colors mini');
+      COLORS.slice(0, 7).forEach(function (c) { var x = btn('sw' + ((o.c || '#111111') === c ? ' on' : ''), '', function () { V.change({ c: c }); }); x.style.background = c; cs.appendChild(x); });
+      b.appendChild(cs);
+    }
+    b.appendChild(el('span', 'grow'));
+    b.appendChild(btn('btn sm danger', '🗑 刪除', function () { V.deleteSel(); renderTools(); }));
+  }
+  document.addEventListener('keydown', function (e) {
+    var ed = document.activeElement && (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !ed) { e.preventDefault(); V.undo(); renderTools(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && !ed && V.sel) { e.preventDefault(); V.deleteSel(); renderTools(); }
+  });
+
+  /* ---------- 加入圖片、文字、連結 ---------- */
+  function center(w, h) { return { x: Math.round((WB.W - w) / 2 + (Math.random() * 60 - 30)), y: Math.round((WB.H - h) / 2 + (Math.random() * 40 - 20)) }; }
+  function afterAdd() { tool.mode = 'select'; V.setTool(tool); if (S.lock) { S.lock = false; save(); V.setLocked(false); } renderTools(); }
+  function addText(txt, vert) {
+    var w = vert ? 140 : 520, h = vert ? 420 : 120, c = center(w, h);
+    V.setTool({ mode: 'select' }); tool.mode = 'select';
+    if (S.lock) { S.lock = false; save(); V.setLocked(false); }
+    V.addObj({ id: WB.uid(), k: 't', by: 'T', x: c.x, y: c.y, w: w, h: h, r: 0, fx: false, txt: txt, v: !!vert, fs: 36, c: '#111111' });
+    renderTools();
+    if (!txt) setTimeout(function () { V.editText(V.sel); }, 30);
+  }
+  function addLinkBox() {
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🔗 加入連結'));
+      box.appendChild(el('p', '', '把網址貼在下面，畫板上會出現可以點的連結。'));
+      var i = el('input', 'wide-in'); i.placeholder = 'https://…'; box.appendChild(i);
+      var row = el('div', 'modal-btns');
+      row.appendChild(btn('btn', '取消', closeModal));
+      row.appendChild(btn('btn primary', '加入', function () {
+        var u = i.value.trim(); if (!u) return; if (!/^https?:\/\//.test(u) && !/^www\./.test(u)) u = 'https://' + u;
+        closeModal(); addText(u, false);
+      }));
+      box.appendChild(row); setTimeout(function () { i.focus(); }, 30);
+    });
+  }
+  /* 圖片壓縮：最長邊 1600、JPEG，太大再降畫質 */
+  function addImageFile(file) {
+    if (!file || !/^image\//.test(file.type)) return toast('這不是圖片檔');
+    var fr = new FileReader();
+    fr.onload = function () {
+      var im = new Image();
+      im.onload = function () {
+        var k = Math.min(1, 1600 / Math.max(im.width, im.height)), w = Math.round(im.width * k), h = Math.round(im.height * k);
+        var cv = document.createElement('canvas'); cv.width = w; cv.height = h; var cx = cv.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(im, 0, 0, w, h);
+        var q = 0.85, d = cv.toDataURL('image/jpeg', q);
+        while (d.length > 450000 && q > 0.4) { q -= 0.12; d = cv.toDataURL('image/jpeg', q); }
+        var id = 'im' + WB.uid(); WB.setImg(id, d); idbPut(id, d);
+        var f = Math.min(1, (WB.W * 0.7) / w, (WB.H * 0.7) / h), ww = Math.round(w * f), hh = Math.round(h * f), c = center(ww, hh);
+        V.setTool({ mode: 'select' }); tool.mode = 'select'; if (S.lock) { S.lock = false; save(); V.setLocked(false); }
+        V.addObj({ id: WB.uid(), k: 'i', by: 'T', x: c.x, y: c.y, w: ww, h: hh, r: 0, fx: false, src: id });
+        renderTools(); toast('🖼️ 已加入圖片，可以拖角落調整大小');
+      };
+      im.onerror = function () { toast('這張圖片打不開'); };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+  function addPastedText(t) {
+    t = (t || '').trim(); if (!t) return;
+    addText(t, false);
+  }
+  document.addEventListener('paste', function (e) {
+    var a = document.activeElement; if (a && (a.isContentEditable || /INPUT|TEXTAREA/.test(a.tagName))) return;
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) if (items[i].type.indexOf('image/') === 0) { e.preventDefault(); addImageFile(items[i].getAsFile()); return; }
+    var t = e.clipboardData && e.clipboardData.getData('text/plain'); if (t) { e.preventDefault(); addPastedText(t); }
+  });
+  function pasteButton() {
+    if (!navigator.clipboard || !navigator.clipboard.read) { toast('這台裝置請直接按 Ctrl+V（Mac 按 ⌘+V）貼上'); return; }
+    navigator.clipboard.read().then(function (items) {
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i], img = it.types.filter(function (t) { return t.indexOf('image/') === 0; })[0];
+        if (img) return it.getType(img).then(function (b) { addImageFile(new File([b], 'paste', { type: img })); });
+      }
+      for (var j = 0; j < items.length; j++) if (items[j].types.indexOf('text/plain') >= 0) return items[j].getType('text/plain').then(function (b) { return b.text(); }).then(addPastedText);
+      toast('剪貼簿裡沒有圖片或文字');
+    }).catch(function () { toast('沒有權限讀取剪貼簿，請改按 Ctrl+V（Mac 按 ⌘+V）'); });
+  }
+  $('file-in').onchange = function () { [].forEach.call(this.files, addImageFile); this.value = ''; };
+  $('board-host').addEventListener('dragover', function (e) { e.preventDefault(); });
+  $('board-host').addEventListener('drop', function (e) { e.preventDefault(); [].forEach.call(e.dataTransfer.files || [], addImageFile); });
+
+  /* 圖片存在這台裝置的 IndexedDB（容量比較大） */
+  var idb = null;
+  function idbOpen(cb) {
+    if (idb) return cb(idb);
+    try { var r = indexedDB.open('wb-imgs', 1); r.onupgradeneeded = function () { r.result.createObjectStore('i'); }; r.onsuccess = function () { idb = r.result; cb(idb); }; r.onerror = function () { cb(null); }; } catch (e) { cb(null); }
+  }
+  function idbPut(id, d) { idbOpen(function (db) { if (db) try { db.transaction('i', 'readwrite').objectStore('i').put(d, id); } catch (e) {} }); }
+  function idbLoadAll(cb) {
+    idbOpen(function (db) {
+      if (!db) return cb();
+      var st = db.transaction('i').objectStore('i'), rq = st.openCursor();
+      rq.onsuccess = function () { var c = rq.result; if (c) { WB.imgs[c.key] = c.value; c.continue(); } else cb(); };
+      rq.onerror = function () { cb(); };
+    });
+  }
+  WB.onImg(function () { boardChanged('P:' + S.cur); for (var g in wallThumbs) boardChanged('G:' + g); S.pages.forEach(function (p) { boardChanged('P:' + p.id); }); });
 
   /* ---------- 頁面 ---------- */
   var thumbs = {};
@@ -209,7 +348,7 @@
     for (var g in S.groups) { delete S.groups[g].boards[pid]; if (S.groups[g].cur === pid) S.groups[g].cur = null; }
     save(); refreshAll(); showBoard(); renderWall();
   }
-  function drawThumb(cv, objs) { WB.render(cv.getContext('2d'), objs || [], cv.width / WB.W); }
+  function drawThumb(cv, objs) { WB.render(cv.getContext('2d'), objs || [], cv.width / WB.W, '#fff', true); }
   var pend = {}, pendT = null;
   function boardChanged(bid) {
     pend[bid] = 1; if (pendT) return;
@@ -393,7 +532,8 @@
   }
 
   function renderAll() { renderMode(); showBoard(); renderRoster(); renderWall(); }
-  connect(); renderAll();
+  V.setLocked(!!S.lock);
+  idbLoadAll(function () { connect(); renderAll(); });
   if (!Object.keys(S.students).length) setTimeout(function () { $('b-join').click(); }, 300);
   window.__wb = { S: function () { return S; }, V: V };
 })();

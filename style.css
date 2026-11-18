@@ -49,11 +49,11 @@ body.mode-work .seg button.on{background:var(--warn);color:#fff}
 .wb-stage{position:relative;background:#fff;border-radius:6px;box-shadow:0 2px 14px #1f243322;overflow:hidden}
 .wb-stage canvas{position:absolute;left:0;top:0}
 .toolbar{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;background:var(--panel);border-radius:14px;padding:6px 10px;box-shadow:0 1px 6px #0001}
-.tb{border:0;background:transparent;border-radius:10px;padding:4px 10px;font-size:22px;display:flex;flex-direction:column;align-items:center;line-height:1.1;min-width:58px}
-.tb small{font-size:12px;color:var(--mute);font-weight:600}
+.tb{border:0;background:transparent;border-radius:10px;padding:4px 5px;font-size:21px;display:flex;flex-direction:column;align-items:center;line-height:1.1;min-width:50px}
+.tb small{font-size:11px;white-space:nowrap;color:var(--mute);font-weight:600}
 .tb.on{background:var(--pri2);box-shadow:inset 0 0 0 2px var(--pri)}
 .colors,.widths{display:flex;gap:5px;align-items:center;padding:0 6px;border-left:1px solid var(--line);border-right:1px solid var(--line)}
-.sw{width:28px;height:28px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccd;padding:0}
+.sw{width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccd;padding:0}
 .sw.on{box-shadow:0 0 0 3px var(--pri)}
 .wd{width:32px;height:32px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center}
 .wd i{display:block;background:#333;border-radius:50%}
@@ -119,3 +119,33 @@ body.student{height:100vh;height:100dvh;overflow:hidden}
 .stu-app .board-host{flex:1}
 .lock-note{color:var(--mute);font-weight:600;padding:8px}
 body.student.can-draw .stu-top{background:#fff4e0}
+
+/* 物件圖層 */
+.wb-objs,.wb-sel{position:absolute;left:0;top:0;width:1600px;height:900px;transform-origin:0 0;pointer-events:none}
+.wb-stage canvas.wb-base{pointer-events:none}
+.wb-obj{position:absolute;transform-origin:50% 50%;pointer-events:none}
+.wb-obj a{pointer-events:auto;color:#1e63d6;text-decoration:underline;word-break:break-all}
+.wb-i img{width:100%;height:100%;display:block;user-select:none;-webkit-user-drag:none;pointer-events:none}
+.wb-i.loading{background:repeating-linear-gradient(45deg,#eef1f7 0 16px,#e2e6ef 16px 32px)}
+.wb-txt{width:100%;height:100%;padding:6px 8px;line-height:1.35;white-space:pre-wrap;word-break:break-word;font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;overflow:visible;outline:none}
+.wb-txt.vert{writing-mode:vertical-rl;text-orientation:upright;line-height:1.35}
+.wb-txt .ph{color:#9aa1b2;font-size:.6em}
+.selecting .wb-obj{pointer-events:auto;cursor:move}
+.selecting .wb-obj:hover{outline:calc(2px * var(--inv,1)) dashed #3157d588}
+.wb-obj.editing{pointer-events:auto;outline:calc(2px * var(--inv,1)) solid #f08c00;background:#fffdf5}
+.wb-obj.editing .wb-txt{cursor:text;user-select:text;-webkit-user-select:text}
+.wb-sel .box{position:absolute;outline:calc(2px * var(--inv,1)) solid #3157d5;transform-origin:50% 50%}
+.wb-sel .h{position:absolute;width:calc(20px * var(--inv,1));height:calc(20px * var(--inv,1));background:#fff;border:calc(2px * var(--inv,1)) solid #3157d5;border-radius:50%;pointer-events:auto;transform:translate(-50%,-50%);touch-action:none;box-sizing:border-box}
+.wb-sel .nw{left:0;top:0;cursor:nwse-resize}.wb-sel .ne{left:100%;top:0;cursor:nesw-resize}
+.wb-sel .sw{left:0;top:100%;cursor:nesw-resize}.wb-sel .se{left:100%;top:100%;cursor:nwse-resize}
+.wb-sel .rot{position:absolute;left:50%;top:calc(-46px * var(--inv,1));width:calc(30px * var(--inv,1));height:calc(30px * var(--inv,1));margin-left:calc(-15px * var(--inv,1));background:#3157d5;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:calc(18px * var(--inv,1));pointer-events:auto;cursor:grab;touch-action:none}
+.tgrp{display:flex;align-items:center;gap:4px;padding:0 6px;border-right:1px solid var(--line)}
+.tgrp:last-child{border-right:0}
+.tb.warn{background:#fff4e0;box-shadow:inset 0 0 0 2px var(--warn)}
+.vt{writing-mode:vertical-rl;font-weight:900;font-size:18px;line-height:1}
+.objbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:#eef3ff;border:1px solid #c9d6ff;border-radius:12px;padding:6px 10px;font-size:14px}
+.objbar .ang input{width:64px;font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:8px}
+.colors.mini{border:0;padding:0}
+.colors.mini .sw{width:22px;height:22px}
+.wide-in{width:100%;font:inherit;font-size:16px;padding:10px;border:2px solid var(--line);border-radius:10px}
+.toolbar .colors{border:0}

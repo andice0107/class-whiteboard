@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>共用畫板・老師端</title><link rel="stylesheet" href="style.css?v=2611180233">
+<title>共用畫板・老師端</title><link rel="stylesheet" href="style.css?v=2611180240">
 </head><body class="host">
 <header class="bar">
   <div class="brand">🖍️ 共用畫板</div>
@@ -16,13 +16,15 @@
   <section class="work">
     <div class="ctx-bar" id="ctx-bar"></div>
     <div class="board-host" id="board-host"></div>
+    <div class="objbar" id="objbar" hidden></div>
     <div class="toolbar" id="toolbar"></div>
+    <input type="file" id="file-in" accept="image/*" multiple hidden>
   </section>
   <aside class="side" id="side" hidden></aside>
 </main>
 <div class="wall" id="wall" hidden></div>
 <div class="modal" id="modal" hidden><div class="modal-box" id="modal-box"></div></div>
 <div class="toast" id="toast"></div>
-<script src="vendor/mqtt.min.js?v=2611180233"></script><script src="vendor/qrcode.js?v=2611180233"></script>
-<script src="net.js?v=2611180233"></script><script src="board.js?v=2611180233"></script><script src="host.js?v=2611180233"></script>
+<script src="vendor/mqtt.min.js?v=2611180240"></script><script src="vendor/qrcode.js?v=2611180240"></script>
+<script src="net.js?v=2611180240"></script><script src="board.js?v=2611180240"></script><script src="host.js?v=2611180240"></script>
 </body></html>
