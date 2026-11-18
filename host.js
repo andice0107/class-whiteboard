@@ -218,6 +218,22 @@
   /* 已知的衝突：這個畫板自己或瀏覽器常用的組合 */
   var APP_USED = IS_MAC ? { ctrl: '可能被系統縮放佔用', shift: '瀏覽器拿來左右捲動' } : { shift: '瀏覽器拿來左右捲動' };
   var SEL_IC = '<svg class="sel-ic" viewBox="0 0 32 32" width="26" height="26"><rect x="3" y="3" width="17" height="15" fill="none" stroke="#c62828" stroke-width="2.4" stroke-dasharray="4 2.6"/><path d="M12 10 L28 22 L21 23 L25 30 L22 31.5 L18 24.5 L13 29 Z" fill="#a31515" stroke="#fff" stroke-width="1"/></svg>';
+  var AKEYS = IS_MAC ? [['shift', '⇧ Shift'], ['meta', '⌘ Command'], ['alt', '⌥ Option']] : [['shift', 'Shift'], ['ctrl', 'Ctrl'], ['alt', 'Alt']];
+  function akName(k) { var f = AKEYS.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
+  try { V.addKey = localStorage.getItem('wb-addkey') || ''; } catch (e) { V.addKey = ''; }
+  if (!AKEYS.some(function (x) { return x[0] === V.addKey; })) V.addKey = 'shift';
+  function selPanel(anchor) {
+    if (!anchor) return;
+    openPop(anchor, function (p) {
+      p.appendChild(el('div', 'pop-h', '選取工具'));
+      p.appendChild(el('p', 'hint', '👆 物件上按住左鍵：拖拉移動<br>⬚ 空白處按住拖曳：圈選多個物件（含筆劃）<br>➕ 按住多選鍵再點物件：一個一個加進來，再點一次會取消；按住多選鍵圈選會加到原本選的裡面'));
+      p.appendChild(el('div', 'pop-l tag t1', '➕ 多選鍵：按住這個鍵再點物件'));
+      var r = el('div', 'pop-row');
+      AKEYS.forEach(function (k) { r.appendChild(btn('btn sm' + (V.addKey === k[0] ? ' primary' : ''), k[1], function () { V.addKey = k[0]; try { localStorage.setItem('wb-addkey', k[0]); } catch (e) {} toast('➕ 多選鍵改成：按住 ' + k[1] + ' 再點物件'); renderTools(); selPanel($('toolbar').querySelector('[data-selb]')); })); });
+      p.appendChild(r);
+      p.appendChild(el('p', 'hint', '這個設定只存在這台電腦。'));
+    });
+  }
   function zkName(k) { var f = ZKEYS.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
   try { V.zoomKey = localStorage.getItem('wb-zoomkey') || ''; } catch (e) { V.zoomKey = ''; }
   if (!ZKEYS.some(function (x) { return x[0] === V.zoomKey; })) V.zoomKey = IS_MAC ? 'alt' : 'ctrl';
@@ -288,7 +304,11 @@
       if (!V.objs.some(function (o) { return o.k === 's'; })) return toast('這一頁沒有筆劃');
       V.clear(true); renderTools(); toast('🧹 已清除這一頁所有筆劃（按「上一步」可以復原）');
     }), '只清除筆劃，圖片、文字、圖形會留著');
-    add(btn('tb' + (tool.mode === 'select' || tool.mode === 'lasso' ? ' on' : ''), SEL_IC + '<small>選取</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖'); else toast('👆 在物件上按住可以拖拉；在空白處拖曳可以圈選多個物件（含筆劃）'); }), '選取：點物件拖拉、空白處拖曳圈選');
+    add(btn('tb' + (tool.mode === 'select' || tool.mode === 'lasso' ? ' on' : ''), SEL_IC + '<small>選取 ▾</small>', function () {
+      var was = tool.mode === 'select'; setMode('select');
+      if (was) return selPanel($('toolbar').querySelector('[data-selb]'));
+      if (S.lock) toast('🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖'); else toast('👆 物件上按住可拖拉；空白處拖曳可圈選；按住 ' + akName(V.addKey) + ' 點物件可以多選（再點一次「選取」可設定）');
+    }), '選取：點物件拖拉、空白處拖曳圈選、按住 ' + akName(V.addKey) + ' 點物件多選'); var sbx = $('toolbar').lastChild; sbx.dataset.selb = 1; sbx.dataset.pop = 1;
     var sb = add(btn('tb' + (tool.mode === 'shape' ? ' on' : ''), '🔷<small>圖形</small>', function () { shapePanel(sb); })); sb.dataset.pop = 1;
     var ib = add(btn('tb', '➕<small>插入 ▾</small>', function () { insertPanel(ib); }), '便利貼、文字、連結、影片、圖片、貼上、背景'); ib.dataset.pop = 1;
     add(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '全部已鎖' : '全部鎖定') + '</small>', function () {

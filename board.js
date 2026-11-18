@@ -160,7 +160,7 @@ window.WB = (function () {
     stage.appendChild(bgl); stage.appendChild(layer); stage.appendChild(base); stage.appendChild(top); stage.appendChild(vlayer); stage.appendChild(sel); host.appendChild(stage);
     var bctx = base.getContext('2d'), tctx = top.getContext('2d');
     var V = { objs: [], bid: null, tool: { mode: 'pen', color: '#111', width: 4 }, editable: false, hist: {} };
-    var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null, shaping = null, zooming = null, lasso = null, lassoPid = null;
+    var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null, shaping = null, zooming = null, lasso = null, lassoPid = null, lassoBase = null;
     V.vp = { x: 0, y: 0, z: 1 };
     function S_() { return scale * V.vp.z; }
     function applyVp() {
@@ -408,7 +408,25 @@ window.WB = (function () {
       groupCommit(G.news, origs); sel._id = null;
     }
     var lastSync = 0;
+    function addHeld(e) { var k = V.addKey || 'shift'; return k === 'shift' ? e.shiftKey : k === 'ctrl' ? e.ctrlKey : k === 'meta' ? e.metaKey : k === 'alt' ? e.altKey : false; }
     function onDown(e) {
+      if (opt.mergedSelect && V.tool.mode === 'select' && V.editable && !V.locked && addHeld(e) && !(e.target.dataset && /^(g?(nw|ne|sw|se|rot|menu)|gmenu)$/.test(e.target.dataset.h || ''))) {
+        e.preventDefault();
+        var ap = pos(e), aoe = e.target.closest && e.target.closest('.wb-obj');
+        var ao = aoe ? find(aoe.dataset.id) : (objAt(ap[0], ap[1]) || strokeAt(ap[0], ap[1]));
+        if (ao && opt.canEdit && !opt.canEdit(ao)) ao = null;
+        var base = V.multi ? V.multi.slice() : (V.sel ? [V.sel] : []);
+        if (ao) {
+          var ix = base.indexOf(ao.id); if (ix >= 0) base.splice(ix, 1); else base.push(ao.id);
+          if (V.sel) select(null);
+          V.setMulti(base);
+        } else {
+          if (V.sel) select(null);
+          lassoBase = base; lasso = [ap[0], ap[1]]; lassoPid = e.pointerId;
+          try { stage.setPointerCapture(e.pointerId); } catch (x) {}
+        }
+        return;
+      }
       var gh = e.target.dataset && e.target.dataset.h;
       if (gh && gh.charAt(0) === 'g' && V.multi) { e.preventDefault(); groupDown(e, gh); return; }
       if (V.tool.mode !== 'select' || V.locked) return;
@@ -473,7 +491,7 @@ window.WB = (function () {
     }
     function onUp(e) {
       if (gdrag && e.pointerId === gdrag.id) return groupUp();
-      if (lassoPid != null && e.pointerId === lassoPid) { lassoPid = null; var poly = lasso; lasso = null; dirty = true; if (poly && poly.length >= 6) V.setMulti(lassoPick(poly)); return; }
+      if (lassoPid != null && e.pointerId === lassoPid) { lassoPid = null; var poly = lasso; lasso = null; dirty = true; var lb = lassoBase; lassoBase = null; if (poly && poly.length >= 6) { var got = lassoPick(poly); if (lb) got.forEach(function (id) { if (lb.indexOf(id) < 0) lb.push(id); }); V.setMulti(lb || got); } else if (lb) V.setMulti(lb); return; }
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
       if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); return; }
