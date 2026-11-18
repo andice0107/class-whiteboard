@@ -71,7 +71,7 @@
     online = {}; lastSent = {};
     net = WBNet.open({ code: S.code, role: 'host', broker: S.broker, onMessage: onMsg, onStatus: function (s) {
       $('h-net').className = 'dot ' + s;
-      if (s === 'online') { if (S.broker !== net.broker) { S.broker = net.broker; save(); } net.send({ t: 'hostup' }, '*'); }
+      if (s === 'online') { if (S.broker !== net.broker) { S.broker = net.broker; save(); if (!$('modal').hidden && $('modal-box').classList.contains('join-box')) $('b-join').click(); } net.send({ t: 'hostup' }, '*'); }
     } });
     $('h-code').textContent = S.code;
   }

@@ -40,7 +40,7 @@
       if (!/^\d{6}$/.test(c)) { toast('教室代碼是 6 位數字'); ci.focus(); return; }
       if (!/^\d{1,6}$/.test(s)) { toast('請輸入學號（只能是數字）'); si.focus(); return; }
       if (me.code !== c || me.sid !== s) me.cid = null;
-      me.code = c; me.sid = s; if (!me.cid) me.cid = Math.random().toString(36).slice(2, 10); saveMe();
+      if (me.code !== c) me.b = null; me.code = c; me.sid = s; if (!me.cid) me.cid = Math.random().toString(36).slice(2, 10); saveMe();
       connect();
     });
     card.appendChild(go);
@@ -59,29 +59,42 @@
   function stop() { if (net) { net.close(); net = null; } clearTimeout(joinT); clearInterval(pingT); joined = false; V = null; }
 
   /* ---------- 連線 ---------- */
-  function connect() {
+  /* 依序試每個中繼站：連上後送出加入，等不到老師回應就換下一個 */
+  function connect(tryNo, first) {
+    tryNo = tryNo || 0;
     stop();
-    waitScreen('正在進入教室 ' + me.code + '…');
-    net = WBNet.open({ code: me.code, role: 'student', sid: me.sid, broker: broker, onMessage: onMsg, onStatus: function (s) {
+    if (first == null) first = me.b != null ? me.b : (broker || 0);
+    var b = (first + tryNo) % 2;
+    waitScreen('正在進入教室 ' + me.code + '…' + (tryNo ? '（換一條線路再試）' : ''));
+    net = WBNet.open({ code: me.code, role: 'student', sid: me.sid, broker: b, onMessage: onMsg, onStatus: function (s) {
       var d = document.querySelector('.st-net'); if (d) d.className = 'st-net dot ' + s;
-      if (s === 'online') send({ t: 'join' });
+      if (s === 'online') {
+        send({ t: 'join' });
+        if (!joined) { clearTimeout(joinT); joinT = setTimeout(fail, 7000); }
+      }
     } });
-    joinT = setTimeout(function () { if (!joined) joinScreen('找不到這間教室。請確認教室代碼有沒有打錯，或請老師確認教室已經打開。'); }, 12000);
+    function fail() {
+      if (joined) return;
+      if (tryNo < 1) connect(tryNo + 1, first);
+      else joinScreen('找不到這間教室。請確認教室代碼有沒有打錯，或請老師確認教室已經打開。');
+    }
+    joinT = setTimeout(fail, 14000);
     pingT = setInterval(function () { if (joined) send({ t: 'ping' }); }, 8000);
+    connect.b = b;
   }
   function send(d) { if (!net) return; d.sid = me.sid; d.cid = me.cid; net.send(d); }
   function onMsg(d) {
     if (d.cid && d.cid !== me.cid && d.t !== 'replaced') return;
     switch (d.t) {
-      case 'welcome': if (!joined) { joined = true; clearTimeout(joinT); boardScreen(); } break;
+      case 'welcome': if (!joined) { joined = true; clearTimeout(joinT); me.b = connect.b; saveMe(); boardScreen(); } break;
       case 'view':
-        if (!joined) { joined = true; clearTimeout(joinT); boardScreen(); }
+        if (!joined) { joined = true; clearTimeout(joinT); me.b = connect.b; saveMe(); boardScreen(); }
         V.load(d.bid, d.objs || []); setMeta(d); break;
       case 'meta': setMeta(d); break;
       case 'op': if (V && d.from !== me.sid) V.apply(d.bid, d.op); break;
       case 'live': if (V && d.from !== me.sid && d.o && d.o.by !== me.sid) V.live(d.bid, d.o); break;
       case 'hostup': send({ t: 'join' }); break;
-      case 'replaced': if (d.cid === me.cid) { stop(); infoScreen('這個學號已經在另一台裝置登入了。', '在這台繼續用', function () { connect(); }); } break;
+      case 'replaced': if (d.cid === me.cid) { stop(); infoScreen('這個學號已經在另一台裝置登入了。', '在這台繼續用', function () { connect(0); }); } break;
       case 'closed': stop(); infoScreen('老師已經關閉這間教室了。', '加入新的教室', function () { joinScreen(); }); break;
     }
   }
@@ -132,5 +145,5 @@
     tb.appendChild(btn('tb', '🗑️<small>全消除</small>', function () { if (confirm('要把你自己畫的全部擦掉嗎？')) { V.clear(false); renderTools(); } }));
   }
 
-  if (me.code && me.sid && me.cid) connect(); else joinScreen();
+  if (me.code && me.sid && me.cid) connect(0); else joinScreen();
 })();
