@@ -1340,7 +1340,7 @@
     else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () { toast('這台裝置不支援全螢幕'); });
     else toast('這台裝置不支援全螢幕');
   };
-  document.addEventListener('fullscreenchange', function () { $('b-full').innerHTML = document.fullscreenElement ? '🗗 離開全螢幕' : '⛶ 全螢幕'; setTimeout(V.refit, 100); });
+  document.addEventListener('fullscreenchange', function () { $('b-full').innerHTML = document.fullscreenElement ? '🗗 退出' : '⛶ 全螢幕'; setTimeout(V.refit, 100); });
 
   /* ---------- 對話框 ---------- */
   function modal(build) { closePop(); var m = $('modal'), b = $('modal-box'); b.className = 'modal-box'; b.innerHTML = ''; build(b); m.hidden = false; }

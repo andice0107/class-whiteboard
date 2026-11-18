@@ -372,3 +372,14 @@ body.swap .host-main .work{flex-direction:row-reverse}
 .help-body ul,.help-body ol{margin:4px 0 4px 20px;padding:0}
 .help-body li{margin:3px 0}
 .help-ta{width:100%;height:260px;box-sizing:border-box;font:12px/1.5 monospace;border:1px solid #ccd;border-radius:8px;padding:8px}
+/* 標題列：永遠一列（標籤精簡） */
+.host .bar{flex-wrap:nowrap;gap:8px;overflow:hidden}
+.host .bar>*{flex-shrink:0;white-space:nowrap}
+.host .bar .ctx-bar{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;flex-wrap:nowrap}
+.host .bar .grow{flex:1 1 0;min-width:0}
+.host .bar .btn{padding:6px 9px}
+.host .code-pill{padding:5px 12px;gap:6px;font-size:16px}
+.host .seg button{padding:7px 10px}
+.host .help-b{font-size:20px;padding:4px 8px}
+@media (max-width:1300px){.host .bar .ctx-bar:not(.collab){display:none}}
+@media (max-width:1120px){.host .bar{gap:5px;padding:5px 6px}.host .bar .btn{padding:6px 6px;font-size:14px}.host .seg button{padding:6px 7px;font-size:14px}.host .code-pill{font-size:14px;padding:4px 8px}.host .brand{font-size:15px}}
