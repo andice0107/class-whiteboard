@@ -160,7 +160,7 @@ window.WB = (function () {
     stage.appendChild(bgl); stage.appendChild(layer); stage.appendChild(base); stage.appendChild(top); stage.appendChild(vlayer); stage.appendChild(sel); host.appendChild(stage);
     var bctx = base.getContext('2d'), tctx = top.getContext('2d');
     var V = { objs: [], bid: null, tool: { mode: 'pen', color: '#111', width: 4 }, editable: false, hist: {} };
-    var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null, shaping = null, zooming = null, lasso = null;
+    var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null, shaping = null, zooming = null, lasso = null, lassoPid = null;
     V.vp = { x: 0, y: 0, z: 1 };
     function S_() { return scale * V.vp.z; }
     function applyVp() {
@@ -202,7 +202,7 @@ window.WB = (function () {
       if (mine) drawStroke(tctx, mine);
       if (shaping && shaping.o) { var so = shaping.o; tctx.save(); tctx.translate(so.x + so.w / 2, so.y + so.h / 2); drawShape(tctx, so); tctx.restore(); }
       if (lasso && lasso.length > 2) { tctx.save(); tctx.strokeStyle = '#3157d5'; tctx.lineWidth = 2 / S_(); tctx.setLineDash([8 / S_(), 5 / S_()]); tctx.fillStyle = 'rgba(49,87,213,.08)'; tctx.beginPath(); tctx.moveTo(lasso[0], lasso[1]); for (var li = 2; li < lasso.length; li += 2) tctx.lineTo(lasso[li], lasso[li + 1]); tctx.closePath(); tctx.fill(); tctx.stroke(); tctx.restore(); }
-      if (V.multi && V.tool.mode === 'lasso') { tctx.save(); tctx.strokeStyle = 'rgba(49,87,213,.55)'; tctx.lineWidth = 1.5 / S_(); tctx.setLineDash([4 / S_(), 4 / S_()]); members().forEach(function (o) { var q = bboxOf(o); tctx.strokeRect(q[0], q[1], q[2] - q[0], q[3] - q[1]); }); tctx.restore(); }
+      if (V.multi && (V.tool.mode === 'lasso' || V.tool.mode === 'select')) { tctx.save(); tctx.strokeStyle = 'rgba(49,87,213,.55)'; tctx.lineWidth = 1.5 / S_(); tctx.setLineDash([4 / S_(), 4 / S_()]); members().forEach(function (o) { var q = bboxOf(o); tctx.strokeRect(q[0], q[1], q[2] - q[0], q[3] - q[1]); }); tctx.restore(); }
       if (zooming && zooming.b) { var zb = zooming.b; tctx.strokeStyle = '#3157d5'; tctx.lineWidth = 2 / S_(); tctx.setLineDash([8 / S_(), 5 / S_()]); tctx.strokeRect(zb[0], zb[1], zb[2], zb[3]); tctx.fillStyle = 'rgba(49,87,213,.08)'; tctx.fillRect(zb[0], zb[1], zb[2], zb[3]); tctx.setLineDash([]); }
       if (erasing && erasing.cx != null) { tctx.strokeStyle = '#e44'; tctx.lineWidth = 2 / S_(); tctx.setLineDash([6, 4]); tctx.beginPath(); tctx.arc(erasing.cx, erasing.cy, erasing.r, 0, Math.PI * 2); tctx.stroke(); tctx.setLineDash([]); }
       requestAnimationFrame(frame);
@@ -258,10 +258,10 @@ window.WB = (function () {
       drawSel();
     }
     function find(id) { for (var i = 0; i < V.objs.length; i++) if (V.objs[i].id === id) return V.objs[i]; return null; }
-    function select(id) { if (V.sel === id) return; finishEdit(); V.sel = id; dirty = true; opt.onSelect && opt.onSelect(id ? find(id) : null); }
+    function select(id) { if (V.sel === id) return; finishEdit(); if (id && V.multi) V.setMulti(null); V.sel = id; dirty = true; opt.onSelect && opt.onSelect(id ? find(id) : null); }
     V.select = select;
     function drawSel() {
-      if (V.multi && V.tool.mode === 'lasso') {
+      if (V.multi && (V.tool.mode === 'lasso' || V.tool.mode === 'select')) {
         var list = members(); if (!list.length) { V.setMulti(null); sel.innerHTML = ''; return; }
         var lk = list.some(function (o) { return o.lk; }), gk = 'G' + (lk ? 'L' : '') + V.multi.join(',');
         if (sel._id !== gk) {
@@ -415,7 +415,17 @@ window.WB = (function () {
       var h = e.target.dataset && e.target.dataset.h, oe = e.target.closest('.wb-obj');
       var o = h ? find(V.sel) : (oe ? find(oe.dataset.id) : null);
       if (o && opt.canEdit && !opt.canEdit(o)) o = null;
-      if (!o) { select(null); return; }
+      if (!o) {
+        select(null);
+        if (opt.mergedSelect && !h && V.editable) {
+          var pp = pos(e), so = strokeAt(pp[0], pp[1]);
+          e.preventDefault();
+          if (so) { V.setMulti([so.id]); groupDown(e, 'gmove'); return; }
+          V.setMulti(null); lasso = [pp[0], pp[1]]; lassoPid = e.pointerId;
+          try { stage.setPointerCapture(e.pointerId); } catch (x) {}
+        }
+        return;
+      }
       if (editing === o.id) return;
       e.preventDefault();
       if (h === 'menu') { if (opt.onContext) opt.onContext(o, e.clientX, e.clientY); return; }
@@ -427,6 +437,11 @@ window.WB = (function () {
     }
     function onMove(e) {
       if (gdrag && e.pointerId === gdrag.id) return groupMove(e);
+      if (lassoPid != null && e.pointerId === lassoPid) { var lp = pos(e), ln = lasso.length; if (Math.abs(lasso[ln - 2] - lp[0]) + Math.abs(lasso[ln - 1] - lp[1]) >= 3) lasso.push(lp[0], lp[1]); dirty = true; return; }
+      if (opt.mergedSelect && !dragStart && V.tool.mode === 'select' && e.pointerType === 'mouse' && !e.buttons) {
+        var hp = pos(e), onObj = e.target.closest && e.target.closest('.wb-obj,.wb-sel i');
+        stage.style.cursor = !onObj && strokeAt(hp[0], hp[1]) ? 'pointer' : '';
+      }
       var D = dragStart; if (!D || e.pointerId !== D.id) return;
       var p = pos(e), o = find(D.o.id); if (!o) { dragStart = null; return; }
       if (!D.moved && Math.abs(p[0] - D.p[0]) + Math.abs(p[1] - D.p[1]) < 4) return;
@@ -458,6 +473,7 @@ window.WB = (function () {
     }
     function onUp(e) {
       if (gdrag && e.pointerId === gdrag.id) return groupUp();
+      if (lassoPid != null && e.pointerId === lassoPid) { lassoPid = null; var poly = lasso; lasso = null; dirty = true; if (poly && poly.length >= 6) V.setMulti(lassoPick(poly)); return; }
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
       if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); return; }
@@ -477,6 +493,25 @@ window.WB = (function () {
       return null;
     }
     V.objAt = objAt;
+    function strokeAt(x, y) {
+      for (var i = V.objs.length - 1; i >= 0; i--) {
+        var o = V.objs[i]; if (o.k !== 's' || (opt.canEdit && !opt.canEdit(o))) continue;
+        var p = o.p, r = (o.w || 4) / 2 + 7;
+        if (p.length === 2 && Math.hypot(p[0] - x, p[1] - y) <= r) return o;
+        for (var j = 0; j + 3 < p.length; j += 2) {
+          var ax = p[j], ay = p[j + 1], bx = p[j + 2], by = p[j + 3], dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L)) : 0;
+          if (Math.hypot(ax + t * dx - x, ay + t * dy - y) <= r) return o;
+        }
+      }
+      return null;
+    }
+    function lassoPick(poly) {
+      return V.objs.filter(function (o) {
+        if (opt.canEdit && !opt.canEdit(o)) return false;
+        if (o.k === 's') { var inn = 0, tot = 0; for (var i = 0; i < o.p.length; i += 2) { tot++; if (inPoly(o.p[i], o.p[i + 1], poly)) inn++; } return tot && inn / tot >= 0.5; }
+        return inPoly(o.x + o.w / 2, o.y + o.h / 2, poly);
+      }).map(function (o) { return o.id; });
+    }
     var taps = [];
     stage.addEventListener('dblclick', function (e) {
       if (!V.editable || V.locked) return;
@@ -656,12 +691,7 @@ window.WB = (function () {
       if (lasso) {
         var poly = lasso; lasso = null; dirty = true;
         if (poly.length < 6) return;
-        var ids = V.objs.filter(function (o) {
-          if (opt.canEdit && !opt.canEdit(o)) return false;
-          if (o.k === 's') { var inn = 0, tot = 0; for (var i = 0; i < o.p.length; i += 2) { tot++; if (inPoly(o.p[i], o.p[i + 1], poly)) inn++; } return tot && inn / tot >= 0.5; }
-          return inPoly(o.x + o.w / 2, o.y + o.h / 2, poly);
-        }).map(function (o) { return o.id; });
-        V.setMulti(ids);
+        V.setMulti(lassoPick(poly));
         return;
       }
       if (shaping) {
@@ -729,7 +759,7 @@ window.WB = (function () {
       stage.classList.toggle('own-select', b && m === 'select' && !!opt.canEdit);
       stage.style.touchAction = b && m === 'select' ? 'none' : '';
       if (m !== 'select') { finishEdit(); if (V.sel) select(null); }
-      if (m !== 'lasso' && V.multi) V.setMulti(null);
+      if (m !== 'lasso' && m !== 'select' && V.multi) V.setMulti(null);
       dirty = true;
     };
     V.setLocked = function (b) { V.locked = b; if (b) select(null); V.setEditable(V.editable); };

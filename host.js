@@ -199,7 +199,7 @@
     onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
     onLockedHint: function () { toast(S.lock ? '🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖' : '🔒 圈到的物件裡有鎖定的，按「⋯」可以一次解除鎖定'); },
     onMulti: function (n) { if (n) toast('⭕ 圈到 ' + n + ' 個物件：拖曳移動、拉角落等比例縮放、⟳ 旋轉，按「⋯」或右鍵有更多功能'); },
-    wheelZoom: true,
+    wheelZoom: true, mergedSelect: true,
     onLive: function (bid, o) { distribute(bid, { t: 'live', o: o }); },
     onVideo: function (id, cmd, at) { distribute(V.bid, { t: 'vid', id: id, cmd: cmd, at: at }); },
     onViewport: function (vp) {
@@ -217,6 +217,7 @@
   var ZK_TEST = {}; try { ZK_TEST = JSON.parse(localStorage.getItem('wb-zktest') || '{}') || {}; } catch (e) {}
   /* 已知的衝突：這個畫板自己或瀏覽器常用的組合 */
   var APP_USED = IS_MAC ? { ctrl: '可能被系統縮放佔用', shift: '瀏覽器拿來左右捲動' } : { shift: '瀏覽器拿來左右捲動' };
+  var SEL_IC = '<svg class="sel-ic" viewBox="0 0 32 32" width="26" height="26"><rect x="3" y="3" width="17" height="15" fill="none" stroke="#c62828" stroke-width="2.4" stroke-dasharray="4 2.6"/><path d="M12 10 L28 22 L21 23 L25 30 L22 31.5 L18 24.5 L13 29 Z" fill="#a31515" stroke="#fff" stroke-width="1"/></svg>';
   function zkName(k) { var f = ZKEYS.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
   try { V.zoomKey = localStorage.getItem('wb-zoomkey') || ''; } catch (e) { V.zoomKey = ''; }
   if (!ZKEYS.some(function (x) { return x[0] === V.zoomKey; })) V.zoomKey = IS_MAC ? 'alt' : 'ctrl';
@@ -264,7 +265,7 @@
   function openPop(anchor, build) {
     closePop(); pop = el('div', 'pop'); build(pop); document.body.appendChild(pop);
     var r = anchor.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight, x, y;
-    if (anchor.closest('.toolbar')) { x = r.left - pw - 10; y = r.top + r.height / 2 - ph / 2; }
+    if (anchor.closest('.toolbar')) { x = r.left > innerWidth / 2 ? r.left - pw - 10 : r.right + 10; y = r.top + r.height / 2 - ph / 2; }
     else { x = r.left + r.width / 2 - pw / 2; y = r.top - ph - 8; if (y < 8) y = r.bottom + 8; }
     pop.style.left = Math.max(8, Math.min(innerWidth - pw - 8, x)) + 'px'; pop.style.top = Math.max(8, Math.min(innerHeight - ph - 8, y)) + 'px';
   }
@@ -287,8 +288,7 @@
       if (!V.objs.some(function (o) { return o.k === 's'; })) return toast('這一頁沒有筆劃');
       V.clear(true); renderTools(); toast('🧹 已清除這一頁所有筆劃（按「上一步」可以復原）');
     }), '只清除筆劃，圖片、文字、圖形會留著');
-    add(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動物件</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前全部鎖定，要先按「解鎖」才能移動'); else toast('🖐️ 點物件可以移動、縮放；按右鍵或「⋯」有更多設定'); }));
-    add(btn('tb' + (tool.mode === 'lasso' ? ' on' : ''), '⭕<small>圈選</small>', function () { setMode('lasso'); toast('⭕ 在畫板上圈一圈，被圈到的物件和筆劃可以一起移動、縮放、旋轉、複製、刪除'); }), '一次圈選多個物件（包含筆劃）');
+    add(btn('tb' + (tool.mode === 'select' || tool.mode === 'lasso' ? ' on' : ''), SEL_IC + '<small>選取</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖'); else toast('👆 在物件上按住可以拖拉；在空白處拖曳可以圈選多個物件（含筆劃）'); }), '選取：點物件拖拉、空白處拖曳圈選');
     var sb = add(btn('tb' + (tool.mode === 'shape' ? ' on' : ''), '🔷<small>圖形</small>', function () { shapePanel(sb); })); sb.dataset.pop = 1;
     var ib = add(btn('tb', '➕<small>插入 ▾</small>', function () { insertPanel(ib); }), '便利貼、文字、連結、影片、圖片、貼上、背景'); ib.dataset.pop = 1;
     add(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '全部已鎖' : '全部鎖定') + '</small>', function () {
@@ -635,7 +635,8 @@
     $('pages-open').hidden = !!S.pagesOpen;
     if (!S.pagesOpen) { V.refit(); return; }
     var h = el('div', 'pages-h'); h.appendChild(el('span', '', '畫板頁面（' + S.pages.length + '）'));
-    h.appendChild(btn('ic', '◀', function () { S.pagesOpen = false; save(); renderPages(); setTimeout(V.refit, 50); })).title = '收起頁面欄';
+    h.appendChild(btn('ic swap-b', '⇄', function () { setSwap(!document.body.classList.contains('swap')); })).title = '頁面欄和工具欄左右互換';
+    h.appendChild(btn('ic', document.body.classList.contains('swap') ? '▶' : '◀', function () { S.pagesOpen = false; save(); renderPages(); setTimeout(V.refit, 50); })).title = '收起頁面欄';
     box.appendChild(h);
     var list = el('div', 'pg-list');
     S.pages.forEach(function (p, i) {
@@ -656,6 +657,8 @@
     box.appendChild(list);
     box.appendChild(btn('pg-add', '＋ 新增一頁', function () { newPage(S.cur); }));
   }
+  function setSwap(b) { document.body.classList.toggle('swap', b); try { localStorage.setItem('wb-swap', b ? '1' : ''); } catch (e) {} $('pages-open').firstChild.textContent = b ? '◀' : '▶'; renderPages(); closePop(); setTimeout(V.refit, 50); toast(b ? '⇄ 頁面欄在右邊、工具欄在左邊' : '⇄ 頁面欄在左邊、工具欄在右邊'); }
+  try { if (localStorage.getItem('wb-swap')) { document.body.classList.add('swap'); $('pages-open').firstChild.textContent = '◀'; } } catch (e) {}
   $('pages-open').onclick = function () { S.pagesOpen = true; save(); renderPages(); setTimeout(V.refit, 50); };
   function newPage(after, objs, bg) {
     var np = { id: WB.uid(), objs: objs || [], bg: bg || '' }, idx = pageIdx(after);

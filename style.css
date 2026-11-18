@@ -339,3 +339,15 @@ body.mode-show .seg button.on{background:#7048e8;color:#fff}
 .zk-pad{border:2px dashed #94a3b8;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.6;color:#334155;background:#f8fafc;max-width:440px}
 .zk-pad.on{border-color:#3157d5;background:#eef2ff}
 .zk-pad[data-k]::after{content:attr(data-k);display:block;margin-top:6px;font-weight:800;color:#1e3a8a}
+
+/* 選取工具圖示 */
+.tb .sel-ic{display:block;margin:0 auto 1px}
+.wb-stage.selecting .wb-obj{cursor:pointer}
+.wb-sel .gm{cursor:pointer}
+/* 頁面欄、工具欄左右互換 */
+body.swap .host-main .pages{order:3;border-right:0;border-left:1px solid var(--line)}
+body.swap .host-main .pages-open{order:3;border-right:0;border-left:1px solid var(--line)}
+body.swap .host-main .side{order:4}
+body.swap .host-main .work{flex-direction:row-reverse}
+.pages .swap-b{font-weight:900}
+.wb-stage.selecting .wb-obj.lk{cursor:default}
