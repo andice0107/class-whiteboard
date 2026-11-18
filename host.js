@@ -28,7 +28,6 @@
   function pageNo(pid) { for (var i = 0; i < S.pages.length; i++) if (S.pages[i].id === pid) return i + 1; return '?'; }
   function groupOf(sid) { var st = S.students[sid]; return st ? S.groups[st.gid] : null; }
   function members(gid) { return Object.keys(S.students).filter(function (s) { return S.students[s].gid === gid; }).sort(); }
-  function gname(gid) { var m = members(gid); return m.length > 1 ? (S.groups[gid].name || '第 ' + gid + ' 組') : (m[0] || gid); }
   function objsOf(bid) {
     if (!bid) return null;
     if (bid.slice(0, 2) === 'P:') { var p = page(bid.slice(2)); return p ? p.objs : null; }
@@ -39,7 +38,7 @@
   /* ---------- 學生看到的畫面 ---------- */
   function viewFor(sid) {
     var st = S.students[sid], g = S.groups[st.gid];
-    if (S.mode === 'work' && g && g.cur && page(g.cur)) return { bid: 'G:' + st.gid, editable: penOK(sid), title: '✏️ 作業時間・第 ' + pageNo(g.cur) + ' 頁' + (members(st.gid).length > 1 ? '（' + gname(st.gid) + '）' : ''), mode: 'work' };
+    if (S.mode === 'work' && g && g.cur && page(g.cur)) return { bid: 'G:' + st.gid, editable: penOK(sid), title: '✏️ 作業時間・第 ' + pageNo(g.cur) + ' 頁' + (g.custom ? '（' + gname(st.gid) + '）' : ''), mode: 'work' };
     if (S.mode === 'present' && S.cast && S.groups[S.cast] && S.groups[S.cast].cur) return { bid: 'G:' + S.cast, editable: false, title: '📽️ 老師正在分享 ' + gname(S.cast) + ' 的畫面', mode: 'present' };
     return { bid: 'P:' + S.cur, editable: false, title: S.mode === 'work' ? '⏳ 老師還沒有指派畫板給你，先看老師的畫面' : '📽️ 上課中：看老師的畫面', mode: S.mode };
   }
@@ -181,7 +180,7 @@
     g2.appendChild(btn('tb', '🖼️<small>圖片</small>', function () { $('file-in').click(); }));
     g2.appendChild(btn('tb', '📋<small>貼上</small>', pasteButton));
     g2.appendChild(btn('tb', '🔤<small>橫式文字</small>', function () { addText('', false); }));
-    g2.appendChild(btn('tb', '<span class="vt">文</span><small>直式文字</small>', function () { addText('', true); }));
+    g2.appendChild(btn('tb', '↕️<small>直式文字</small>', function () { addText('', true); }));
     g2.appendChild(btn('tb', '🔗<small>連結</small>', addLinkBox));
     g2.appendChild(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '物件已鎖定' : '鎖定物件') + '</small>', function () {
       S.lock = !S.lock; save(); V.setLocked(S.lock); renderTools();
@@ -406,27 +405,157 @@
   /* ---------- 學生名單與畫筆權限 ---------- */
   function setPenAll(b) { S.penAll = b; for (var s in S.students) S.students[s].pen = null; save(); refreshAll(); renderRoster(); renderWall(); toast(b ? '✏️ 已開放全部學生的畫筆' : '🚫 已關閉全部學生的畫筆'); }
   function togglePen(sid) { S.students[sid].pen = !penOK(sid); if (S.students[sid].pen === S.penAll) S.students[sid].pen = null; save(); refresh(sid); renderRoster(); renderWall(); }
+  /* ---------- 分組 ---------- */
+  var picked = {};
+  function customGroups() { return Object.keys(S.groups).filter(function (g) { return S.groups[g].custom; }).sort(function (a, b) { return (+a.slice(1)) - (+b.slice(1)); }); }
+  function gname(gid) {
+    var g = S.groups[gid]; if (!g) return gid;
+    if (g.custom) return g.name || ('第 ' + gid.slice(1) + ' 組');
+    var m = members(gid); return m[0] || gid;
+  }
+  function newGroup() {
+    var cg = customGroups(); if (cg.length >= 30) { toast('最多只能有 30 組'); return null; }
+    var n = 1; while (S.groups['c' + n]) n++;
+    S.groups['c' + n] = { name: '第 ' + n + ' 組', boards: {}, cur: null, custom: true };
+    return 'c' + n;
+  }
+  function moveTo(sids, gid) {
+    var g = S.groups[gid]; if (!g) return;
+    var room = 30 - members(gid).filter(function (s) { return sids.indexOf(s) < 0; }).length, moved = 0;
+    sids.forEach(function (s) {
+      if (moved >= room) return;
+      S.students[s].gid = gid; moved++;
+    });
+    if (moved < sids.length) toast('一組最多 30 人，有 ' + (sids.length - moved) + ' 位沒有移過去');
+    if (!g.cur && S.mode === 'work' && S.assignAll && page(S.assignAll)) assign(gid, S.assignAll, true);
+    if (S.cast && !members(S.cast).length) S.cast = null;
+    save(); refreshAll(); renderRoster(); renderWall(); renderCtx();
+  }
+  function personalAll() {
+    Object.keys(S.students).forEach(function (s) {
+      var gid = 'g' + s; S.students[s].gid = gid;
+      if (!S.groups[gid]) S.groups[gid] = { name: '', boards: {}, cur: null };
+      if (!S.groups[gid].cur && S.mode === 'work' && S.assignAll && page(S.assignAll)) assign(gid, S.assignAll, true);
+    });
+    customGroups().forEach(function (g) { delete S.groups[g]; });
+    if (S.cast && !S.groups[S.cast]) S.cast = null;
+    if (tv.kind === 'group' && !S.groups[tv.gid]) tv = { kind: 'page' };
+    save(); refreshAll(); renderRoster(); renderWall(); showBoard();
+  }
+  function autoGroups(n) {
+    customGroups().forEach(function (g) { delete S.groups[g]; });
+    var ids = Object.keys(S.students).sort(), on = ids.filter(function (s) { return online[s]; });
+    if (on.length) ids = on.concat(ids.filter(function (s) { return !online[s]; }));
+    for (var i = ids.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
+    var gs = []; for (var k = 0; k < n; k++) gs.push(newGroup());
+    ids.forEach(function (s, i) { S.students[s].gid = gs[i % n]; });
+    gs.forEach(function (g) { if (S.mode === 'work' && S.assignAll && page(S.assignAll)) assign(g, S.assignAll, true); });
+    if (S.cast && !S.groups[S.cast]) S.cast = null;
+    if (tv.kind === 'group' && !S.groups[tv.gid]) tv = { kind: 'page' };
+    save(); refreshAll(); renderRoster(); renderWall(); showBoard();
+  }
+  function autoBox() {
+    modal(function (box) {
+      var total = Object.keys(S.students).length;
+      box.appendChild(el('h3', '', '🎲 自動分組'));
+      box.appendChild(el('p', '', '把 ' + total + ' 位學生隨機分成幾組？（原本的分組會被取消，各組畫板會清空重來）'));
+      var i = el('input', 'wide-in'); i.type = 'number'; i.min = 1; i.max = 30; i.value = Math.min(30, Math.max(1, Math.ceil(total / 4))); box.appendChild(i);
+      var row = el('div', 'modal-btns');
+      row.appendChild(btn('btn', '取消', closeModal));
+      row.appendChild(btn('btn primary', '開始分組', function () { var n = Math.round(+i.value); if (!(n >= 1 && n <= 30)) return toast('組數要在 1～30 之間'); if (Math.ceil(total / n) > 30) return toast('這樣一組會超過 30 人，請多分幾組'); closeModal(); autoGroups(n); toast('已分成 ' + n + ' 組'); }));
+      box.appendChild(row);
+    });
+  }
+  function setPen(sids, b) { sids.forEach(function (s) { S.students[s].pen = b === S.penAll ? null : b; }); save(); sids.forEach(function (s) { refresh(s); }); renderRoster(); renderWall(); }
+  function renameGroup(gid) {
+    modal(function (box) {
+      box.appendChild(el('h3', '', '✏️ 組名'));
+      var i = el('input', 'wide-in'); i.value = gname(gid); i.maxLength = 12; box.appendChild(i);
+      var row = el('div', 'modal-btns');
+      row.appendChild(btn('btn', '取消', closeModal));
+      row.appendChild(btn('btn primary', '確定', function () { S.groups[gid].name = i.value.trim() || gname(gid); save(); closeModal(); refreshAll(); renderRoster(); renderWall(); }));
+      box.appendChild(row); setTimeout(function () { i.select(); }, 30);
+    });
+  }
+
   function renderRoster() {
     var ids = Object.keys(S.students).sort();
     $('h-count').textContent = ids.filter(function (s) { return online[s]; }).length + '/' + ids.length;
     var side = $('side'); if (side.hidden) return;
-    side.innerHTML = '';
-    var h = el('div', 'side-h'); h.appendChild(el('b', '', '👥 學生名單')); h.appendChild(btn('x', '✕', function () { side.hidden = true; })); side.appendChild(h);
+    var sc = side.scrollTop; side.innerHTML = '';
+    for (var k in picked) if (!S.students[k]) delete picked[k];
+    var h = el('div', 'side-h'); h.appendChild(el('b', '', '👥 學生與分組')); h.appendChild(btn('x', '✕', function () { side.hidden = true; V.refit(); })); side.appendChild(h);
     var pr = el('div', 'pen-all'); pr.appendChild(el('span', '', '全部學生的畫筆'));
     pr.appendChild(btn('btn sm' + (S.penAll ? ' primary' : ''), '全開', function () { setPenAll(true); }));
     pr.appendChild(btn('btn sm' + (!S.penAll ? ' danger' : ''), '全關', function () { setPenAll(false); }));
     side.appendChild(pr);
+    var ga = el('div', 'grp-acts');
+    ga.appendChild(btn('btn sm', '＋ 新增一組', function () { if (newGroup()) { save(); renderRoster(); renderWall(); } }));
+    ga.appendChild(btn('btn sm', '🎲 自動分組', autoBox));
+    ga.appendChild(btn('btn sm', '↺ 恢復一人一組', function () { confirmBox('要取消所有分組、恢復成一人一組嗎？（各組共用的畫板會被刪除）', '恢復一人一組', personalAll); }));
+    side.appendChild(ga);
+    var pk = Object.keys(picked);
+    if (pk.length) {
+      var bar = el('div', 'bulk');
+      bar.appendChild(el('b', '', '已勾選 ' + pk.length + ' 人'));
+      bar.appendChild(btn('btn sm primary', '✏️ 開畫筆', function () { setPen(pk, true); }));
+      bar.appendChild(btn('btn sm danger', '🚫 關畫筆', function () { setPen(pk, false); }));
+      var sel = el('select'); sel.appendChild(new Option('移到…', ''));
+      customGroups().forEach(function (g) { sel.appendChild(new Option(gname(g) + '（' + members(g).length + '人）', g)); });
+      sel.appendChild(new Option('＋ 新的一組', '_new'));
+      sel.appendChild(new Option('各自一人一組', '_self'));
+      sel.onchange = function () {
+        var v = sel.value; if (!v) return;
+        if (v === '_self') { pk.forEach(function (s) { var gid = 'g' + s; if (!S.groups[gid]) S.groups[gid] = { name: '', boards: {}, cur: null }; S.students[s].gid = gid; if (!S.groups[gid].cur && S.mode === 'work' && S.assignAll) assign(gid, S.assignAll, true); }); picked = {}; save(); refreshAll(); renderRoster(); renderWall(); return; }
+        if (v === '_new') { v = newGroup(); if (!v) return; }
+        picked = {}; moveTo(pk, v);
+      };
+      bar.appendChild(sel);
+      bar.appendChild(btn('btn sm', '取消勾選', function () { picked = {}; renderRoster(); }));
+      side.appendChild(bar);
+    }
     if (!ids.length) side.appendChild(el('p', 'empty', '還沒有學生加入。按上方「教室代碼」顯示 QR code 給學生掃。'));
-    ids.forEach(function (s) {
-      var r = el('div', 'stu' + (online[s] ? '' : ' off'));
+    function row(s) {
+      var r = el('div', 'stu' + (online[s] ? '' : ' off') + (picked[s] ? ' picked' : ''));
+      var cb = el('input'); cb.type = 'checkbox'; cb.checked = !!picked[s]; cb.onchange = function () { if (cb.checked) picked[s] = 1; else delete picked[s]; renderRoster(); };
+      r.appendChild(cb);
       r.appendChild(el('span', 'dot ' + (online[s] ? 'online' : 'offline')));
       r.appendChild(el('b', '', s));
       r.appendChild(el('span', 'grow'));
-      var pb = btn('pen-tg' + (penOK(s) ? ' on' : ''), penOK(s) ? '✏️ 可畫' : '🚫 不可畫', function () { togglePen(s); });
-      r.appendChild(pb);
-      side.appendChild(r);
+      r.appendChild(btn('pen-tg' + (penOK(s) ? ' on' : ''), penOK(s) ? '✏️ 可畫' : '🚫 不可畫', function () { togglePen(s); }));
+      return r;
+    }
+    customGroups().forEach(function (g) {
+      var ms = members(g), sec = el('div', 'grp');
+      var gh = el('div', 'grp-h');
+      var all = el('input'); all.type = 'checkbox'; all.checked = ms.length > 0 && ms.every(function (s) { return picked[s]; });
+      all.onchange = function () { ms.forEach(function (s) { if (all.checked) picked[s] = 1; else delete picked[s]; }); renderRoster(); };
+      gh.appendChild(all);
+      var nm = btn('gname', '👥 ' + gname(g), function () { renameGroup(g); }); nm.title = '點一下改組名'; gh.appendChild(nm);
+      gh.appendChild(el('span', 'cnt', ms.length + ' 人'));
+      gh.appendChild(el('span', 'grow'));
+      if (ms.length) {
+        var on = ms.every(penOK);
+        gh.appendChild(btn('pen-tg' + (on ? ' on' : ''), on ? '✏️ 整組可畫' : '🚫 整組', function () { setPen(ms, !on); }));
+      } else gh.appendChild(btn('ic', '🗑', function () { delete S.groups[g]; save(); renderRoster(); renderWall(); }));
+      sec.appendChild(gh);
+      if (!ms.length) sec.appendChild(el('p', 'empty sm', '還沒有人。勾選學生後用「移到…」放進這一組。'));
+      ms.forEach(function (s) { sec.appendChild(row(s)); });
+      side.appendChild(sec);
     });
-    side.appendChild(el('p', 'hint', '畫筆權限只在「作業模式」有作用；簡報模式時學生一律只能看。'));
+    var solo = ids.filter(function (s) { var g = S.groups[S.students[s].gid]; return !g || !g.custom; });
+    if (solo.length) {
+      var sec = el('div', 'grp solo');
+      var gh = el('div', 'grp-h');
+      var all = el('input'); all.type = 'checkbox'; all.checked = solo.every(function (s) { return picked[s]; });
+      all.onchange = function () { solo.forEach(function (s) { if (all.checked) picked[s] = 1; else delete picked[s]; }); renderRoster(); };
+      gh.appendChild(all); gh.appendChild(el('b', '', '🙋 一人一組')); gh.appendChild(el('span', 'cnt', solo.length + ' 人'));
+      sec.appendChild(gh);
+      solo.forEach(function (s) { sec.appendChild(row(s)); });
+      side.appendChild(sec);
+    }
+    side.appendChild(el('p', 'hint', '畫筆權限只在「作業模式」有作用；簡報模式時學生一律只能看。同一組的人會一起畫同一塊畫板。'));
+    side.scrollTop = sc;
   }
   $('b-roster').onclick = function () { $('side').hidden = !$('side').hidden; renderRoster(); V.refit(); };
 
@@ -448,7 +577,7 @@
     h.appendChild(btn('btn', '✕ 關閉監控牆', function () { w.hidden = true; }));
     w.appendChild(h);
     var grid = el('div', 'wall-grid');
-    var gids = Object.keys(S.groups).filter(function (g) { return members(g).length; }).sort(function (a, b) { return members(a)[0] < members(b)[0] ? -1 : 1; });
+    var gids = customGroups().filter(function (g) { return members(g).length; }).concat(Object.keys(S.groups).filter(function (g) { return !S.groups[g].custom && members(g).length; }).sort(function (a, b) { return members(a)[0] < members(b)[0] ? -1 : 1; }));
     if (!gids.length) grid.appendChild(el('p', 'empty', '還沒有學生加入教室。'));
     gids.forEach(function (gid) {
       var g = S.groups[gid], ms = members(gid), on = ms.some(function (s) { return online[s]; });
@@ -457,6 +586,7 @@
       var th = el('div', 'tile-h');
       th.appendChild(el('span', 'dot ' + (on ? 'online' : 'offline')));
       th.appendChild(el('b', '', gname(gid)));
+      if (g.custom) th.appendChild(el('span', 'mems', ms.join('、')));
       th.appendChild(el('span', 'grow'));
       var eye = btn('ic', shown ? '👁' : '🙈', function (e) { e.stopPropagation(); S.show[gid] = !shown; save(); renderWall(); }); eye.title = shown ? '蓋住這一格' : '打開這一格'; th.appendChild(eye);
       tile.appendChild(th);
@@ -474,7 +604,7 @@
       sel.onclick = function (e) { e.stopPropagation(); };
       sel.onchange = function () { if (sel.value) assign(gid, sel.value); else { g.cur = null; save(); ms.forEach(function (s) { refresh(s); }); } renderWall(); };
       ft.appendChild(sel);
-      if (ms.length === 1) { var s0 = ms[0]; ft.appendChild(btn('pen-tg sm' + (penOK(s0) ? ' on' : ''), penOK(s0) ? '✏️' : '🚫', function () { togglePen(s0); })); }
+      var pon = ms.every(penOK); ft.appendChild(btn('pen-tg sm' + (pon ? ' on' : ''), pon ? '✏️' : '🚫', function () { setPen(ms, !pon); }));
       var cb = btn('ic', '📽️', function () {
         if (!g.cur) return toast('這一組還沒有畫板可以分享');
         S.cast = S.cast === gid ? null : gid; if (S.cast) S.mode = 'present';

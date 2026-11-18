@@ -150,3 +150,16 @@ body.student.can-draw .stu-top{background:#fff4e0}
 .wide-in{width:100%;font:inherit;font-size:16px;padding:10px;border:2px solid var(--line);border-radius:10px}
 .toolbar .colors{border:0}
 .wb-txt.vert a{text-orientation:mixed}
+.grp-acts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.bulk{display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#fff4e0;border:1px solid #ffd59a;border-radius:10px;padding:8px;margin-bottom:10px;font-size:14px;position:sticky;top:-12px;z-index:2}
+.bulk select{font:inherit;border:1px solid var(--line);border-radius:8px;padding:4px}
+.grp{border:1px solid var(--line);border-radius:12px;padding:4px 8px;margin-bottom:10px;background:#fbfcfe}
+.grp-h{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #eef0f5}
+.grp-h .gname{border:0;background:none;font-weight:800;padding:2px 4px;border-radius:6px}
+.grp-h .gname:hover{background:var(--pri2)}
+.cnt{color:var(--mute);font-size:13px}
+.stu.picked{background:#fff7e8}
+.stu input,.grp-h input{width:18px;height:18px}
+.empty.sm{font-size:13px;margin:6px 0}
+.side{width:300px}
+.tile-h .mems{color:var(--mute);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}
