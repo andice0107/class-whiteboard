@@ -136,6 +136,7 @@
         if (!S.groups[gid]) S.groups[gid] = { name: '', boards: {}, cur: null };
         if (S.assignAll && page(S.assignAll) && !S.groups[gid].cur) assign(gid, S.assignAll, true);
       } else if (st.cid !== d.cid) {
+        if (online[sid] && Date.now() - online[sid] < 20000) { net.send({ t: 'taken', cid: d.cid }, sid); return; }
         net.send({ t: 'replaced', cid: st.cid }, sid);
         st.cid = d.cid;
       }

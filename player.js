@@ -96,6 +96,7 @@
       case 'img': if (d.id && d.d) { delete asked[d.id]; WB.setImg(d.id, d.d); } break;
       case 'live': if (V && d.from !== me.sid && d.o && d.o.by !== me.sid) V.live(d.bid, d.o); break;
       case 'hostup': send({ t: 'join' }); break;
+      case 'taken': if (d.cid === me.cid) { stop(); me.cid = null; saveMe(); infoScreen('學號 ' + me.sid + ' 已經有人在使用了，不能重複登入。<br>請確認學號有沒有打錯；如果是你換了裝置，請老師在學生名單按 ✕ 把舊的移出，或等舊裝置關掉約 20 秒後再加入。', '重新輸入', function () { joinScreen(); }); } break;
       case 'replaced': if (d.cid === me.cid) { stop(); infoScreen('這個學號已經在另一台裝置登入了。', '在這台繼續用', function () { connect(0); }); } break;
       case 'closed': stop(); me.cid = null; saveMe(); infoScreen('老師已經結束這堂課，關閉教室了。', '加入新的教室', function () { joinScreen(); }); break;
       case 'kicked': if (d.cid === me.cid) { stop(); me.cid = null; saveMe(); infoScreen('老師已經把你移出這間教室。', '重新加入', function () { joinScreen(); }); } break;
