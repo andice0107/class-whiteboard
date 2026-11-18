@@ -300,3 +300,7 @@ body.mode-show .seg button.on{background:#7048e8;color:#fff}
 .wb-t{box-sizing:border-box}
 .timer.paused{background:#eef3ff;border-color:var(--pri)}
 .timer.paused .clock{color:var(--pri);font-size:15px;min-width:0}
+.modal-btns.col{flex-direction:column;align-items:stretch}
+.host .toolbar .colors.three{gap:3px}
+.host .toolbar .colors.three .sw{width:18px;height:18px}
+.pen-types .shp{min-width:64px;padding:6px 4px}

@@ -5,11 +5,15 @@ window.WB = (function () {
   function uid() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3); }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-  function drawStroke(ctx, o) {
+  /* 筆種：t 空白=原子筆、hl=螢光筆（半透明）、mk=麥克筆、lz=雷射筆（不存檔，幾秒後消失） */
+  function drawStroke(ctx, o, fade) {
     var p = o.p, n = p.length / 2;
-    ctx.strokeStyle = o.c; ctx.lineWidth = o.w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.save();
+    if (o.t === 'hl') { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = 'multiply'; }
+    if (o.t === 'lz') { ctx.globalAlpha = fade == null ? 1 : fade; ctx.shadowColor = o.c; ctx.shadowBlur = 14; }
+    ctx.strokeStyle = o.c; ctx.lineWidth = o.w; ctx.lineCap = o.t === 'hl' || o.t === 'mk' ? 'square' : 'round'; ctx.lineJoin = 'round';
     ctx.beginPath();
-    if (n === 1) { ctx.fillStyle = o.c; ctx.arc(p[0], p[1], o.w / 2, 0, Math.PI * 2); ctx.fill(); return; }
+    if (n === 1) { ctx.fillStyle = o.c; ctx.arc(p[0], p[1], o.w / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore(); return; }
     ctx.moveTo(p[0], p[1]);
     for (var i = 1; i < n - 1; i++) {
       var mx = (p[i * 2] + p[i * 2 + 2]) / 2, my = (p[i * 2 + 1] + p[i * 2 + 3]) / 2;
@@ -17,6 +21,8 @@ window.WB = (function () {
     }
     ctx.lineTo(p[n * 2 - 2], p[n * 2 - 1]);
     ctx.stroke();
+    if (o.t === 'lz') { ctx.shadowBlur = 0; ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1, o.w / 3); ctx.stroke(); }
+    ctx.restore();
   }
   /* 圖片庫：id → dataURL；所有畫板共用 */
   var imgs = {}, imgEls = {}, imgWait = [];
@@ -127,7 +133,7 @@ window.WB = (function () {
     }
     if (!hit) return null;
     if (cur.length) segs.push(cur);
-    return segs.filter(function (s) { return s.length >= 4; }).map(function (s) { return { id: uid(), k: 's', by: o.by, c: o.c, w: o.w, p: s }; });
+    return segs.filter(function (s) { return s.length >= 4; }).map(function (s) { var f = { id: uid(), k: 's', by: o.by, c: o.c, w: o.w, p: s }; if (o.t) f.t = o.t; return f; });
   }
   /* del 和 add 有同一個 id 時是「修改」，原地替換、不改變上下層順序 */
   function applyOp(objs, op) {
@@ -188,7 +194,11 @@ window.WB = (function () {
       tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, top.width, top.height);
       tctx.setTransform(sd, 0, 0, sd, -V.vp.x * sd, -V.vp.y * sd);
       var now = Date.now();
-      for (var k in lives) { if (now - lives[k].t > 4000) delete lives[k]; else drawStroke(tctx, lives[k].o); }
+      for (var k in lives) {
+        var lv = lives[k], age = now - lv.t, lz = lv.o.t === 'lz';
+        if (age > (lz ? 3000 : 4000)) delete lives[k];
+        else drawStroke(tctx, lv.o, lz ? Math.min(1, (3000 - age) / 800) : null);
+      }
       if (mine) drawStroke(tctx, mine);
       if (shaping && shaping.o) { var so = shaping.o; tctx.save(); tctx.translate(so.x + so.w / 2, so.y + so.h / 2); drawShape(tctx, so); tctx.restore(); }
       if (zooming && zooming.b) { var zb = zooming.b; tctx.strokeStyle = '#3157d5'; tctx.lineWidth = 2 / S_(); tctx.setLineDash([8 / S_(), 5 / S_()]); tctx.strokeRect(zb[0], zb[1], zb[2], zb[3]); tctx.fillStyle = 'rgba(49,87,213,.08)'; tctx.fillRect(zb[0], zb[1], zb[2], zb[3]); tctx.setLineDash([]); }
@@ -452,7 +462,9 @@ window.WB = (function () {
       pid = e.pointerId; top.setPointerCapture(pid); e.preventDefault();
       var p = pos(e);
       if (V.tool.mode === 'pen') {
-        mine = { id: uid(), k: 's', by: opt.me, c: V.tool.color, w: V.tool.width, p: p };
+        var pt = V.tool.pen || '', bw = V.tool.width;
+        mine = { id: uid(), k: 's', by: opt.me, c: V.tool.color, w: pt === 'hl' ? bw * 3 + 6 : pt === 'mk' ? bw * 2 + 2 : pt === 'lz' ? Math.max(4, bw) : bw, p: p };
+        if (pt) mine.t = pt;
       } else if (V.tool.mode === 'erase') {
         erasing = { r: V.tool.eraser || 18, orig: {}, made: {}, removed: [], cx: p[0], cy: p[1] };
         eraseAt(p[0], p[1]);
@@ -514,7 +526,10 @@ window.WB = (function () {
         V.setViewport(nv); opt.onViewport && opt.onViewport(V.vp);
         return;
       }
-      if (mine) {
+      if (mine && mine.t === 'lz') {
+        var lo = mine; mine = null; lives[lo.id] = { o: lo, t: Date.now() };
+        opt.onLive && opt.onLive(V.bid, lo);
+      } else if (mine) {
         var o = mine; mine = null; o.p = densify(o.p, 5);
         var xs = o.p.filter(function (v, i) { return i % 2 === 0; }), ys = o.p.filter(function (v, i) { return i % 2 === 1; });
         if (Math.max.apply(null, xs) - Math.min.apply(null, xs) < 10 && Math.max.apply(null, ys) - Math.min.apply(null, ys) < 10) taps.push({ id: o.id, t: Date.now() });
@@ -532,6 +547,7 @@ window.WB = (function () {
     V.find = find;
     V.apply = function (bid, op) { if (bid !== V.bid) return; applyOp(V.objs, op); (op.add || []).forEach(function (o) { delete lives[o.id]; }); dirty = true; };
     V.live = function (bid, o) { if (bid !== V.bid) return; lives[o.id] = { o: o, t: Date.now() }; };
+    V.clearLives = function () { lives = {}; };
     V.undo = function () {
       var h = hist(), e;
       while ((e = h.pop())) {

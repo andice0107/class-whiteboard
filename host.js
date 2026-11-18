@@ -7,6 +7,7 @@
     '#ffd6e0', '#ffe5c2', '#fff3a6', '#d9f5d0', '#cfe8ff', '#e6d9ff', '#ffcccc', '#c8f0ec'];
   var NOTE_COLORS = [['#fff3a6', '黃'], ['#ffd6e5', '粉紅'], ['#cfe8ff', '藍'], ['#d4f5d0', '綠'], ['#e6d9ff', '紫'], ['#ffe0c2', '橙']];
   var WIDTHS = [3, 6, 12];
+  var PENS = [['', '✏️', '原子筆'], ['hl', '🖍️', '螢光筆'], ['mk', '🖊️', '麥克筆'], ['lz', '🔴', '雷射筆']];
   var S, net, tv = { kind: 'page' }, online = {}, lastSent = {};
 
   function fresh(keep) {
@@ -204,7 +205,7 @@
     }
   });
   var vpT = null;
-  var tool = { mode: 'pen', color: COLORS[1], width: WIDTHS[1], shape: { shape: 'rect', sc: '#111111', sw: 3, fill: false, fc: '#ffd6e0', op: 1, n: 5, rows: 3, cols: 3 } };
+  var tool = { mode: 'pen', pen: '', color: COLORS[1], width: WIDTHS[1], shape: { shape: 'rect', sc: '#111111', sw: 3, fill: false, fc: '#ffd6e0', op: 1, n: 5, rows: 3, cols: 3 } };
   V.setTool(tool); V.setEditable(true);
 
   function curBid() { return tv.kind === 'group' ? 'G:' + tv.gid : 'P:' + S.cur; }
@@ -263,15 +264,11 @@
   function renderTools() {
     var t = $('toolbar'); t.innerHTML = '';
     function add(b, title) { if (title) b.title = title; t.appendChild(b); return b; }
-    add(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '<span class="pen-ic" style="--c:' + tool.color + '">✏️</span><small>畫筆</small>', function () { setMode('pen'); }));
-    for (var i = 0; i < COLORS.length; i += 2) {
-      var cs = el('div', 'tcell colors');
-      COLORS.slice(i, i + 2).forEach(function (c) { var b = btn('sw' + (tool.mode === 'pen' && tool.color === c ? ' on' : ''), '', function () { tool.color = c; setMode('pen'); }); b.style.background = c; b.title = c; cs.appendChild(b); });
-      t.appendChild(cs);
-    }
-    var ws = el('div', 'tcell widths');
-    WIDTHS.forEach(function (w) { var b = btn('wd' + (tool.width === w ? ' on' : ''), '<i style="width:' + (w + 3) + 'px;height:' + (w + 3) + 'px"></i>', function () { tool.width = w; setMode('pen'); }); ws.appendChild(b); });
-    t.appendChild(ws);
+    var pk = PENS.filter(function (x) { return x[0] === (tool.pen || ''); })[0] || PENS[0];
+    var pb = add(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '<span class="pen-ic" style="--c:' + tool.color + '">' + pk[1] + '</span><small>' + pk[2] + ' ▾</small>', function () { if (tool.mode !== 'pen') setMode('pen'); penPanel(pb); }), '點一下選筆種、顏色、粗細'); pb.dataset.pop = 1;
+    var cs = el('div', 'tcell colors three');
+    COLORS.slice(0, 3).forEach(function (c) { var b = btn('sw' + (tool.mode === 'pen' && tool.color === c ? ' on' : ''), '', function () { tool.color = c; if (tool.pen === 'lz' || tool.pen === 'hl') tool.pen = ''; setMode('pen'); }); b.style.background = c; b.title = { '#111111': '黑', '#e53935': '紅', '#1e63d6': '藍' }[c]; cs.appendChild(b); });
+    t.appendChild(cs);
     add(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { setMode('erase'); }));
     add(btn('tb', '🧹<small>清除筆劃</small>', function () {
       if (!V.objs.some(function (o) { return o.k === 's'; })) return toast('這一頁沒有筆劃');
@@ -311,6 +308,30 @@
       if (!V.objs.length) return toast('這一頁已經是空白的');
       confirmBox('要把這一頁全部清空嗎？（筆劃、圖片、文字、圖形、便利貼、影片都會清掉；按「上一步」可以復原）', '全部清除', function () { V.clearAll(); renderTools(); });
     }));
+  }
+  function penPanel(anchor) {
+    openPop(anchor, function (p) {
+      p.appendChild(el('div', 'pop-h', '✏️ 選筆'));
+      var r = el('div', 'pop-row pen-types');
+      PENS.forEach(function (x) {
+        r.appendChild(btn('shp' + ((tool.pen || '') === x[0] ? ' on' : ''), '<span>' + x[1] + '</span><small>' + x[2] + '</small>', function () {
+          tool.pen = x[0];
+          if (x[0] === 'hl' && ['#fff35c', '#7dff8a', '#7fd8ff', '#ff9ad5', '#ffb347'].indexOf(tool.color) < 0) tool.color = '#fff35c';
+          if (x[0] === 'lz' && tool.color !== '#ff2a2a' && tool.color !== '#16a34a' && tool.color !== '#1e63d6') tool.color = '#ff2a2a';
+          if ((x[0] === '' || x[0] === 'mk') && ['#fff35c', '#7dff8a', '#7fd8ff', '#ff9ad5', '#ffb347', '#ff2a2a'].indexOf(tool.color) >= 0) tool.color = '#111111';
+          setMode('pen'); penPanel(anchor);
+        }));
+      });
+      p.appendChild(r);
+      if (tool.pen === 'lz') p.appendChild(el('div', 'pop-l', '雷射筆畫過的線會留約 3 秒後消失，學生畫面也看得到，不會留在畫板上。'));
+      p.appendChild(el('div', 'pop-l', '顏色'));
+      var list = tool.pen === 'hl' ? ['#fff35c', '#7dff8a', '#7fd8ff', '#ff9ad5', '#ffb347'] : tool.pen === 'lz' ? ['#ff2a2a', '#16a34a', '#1e63d6'] : PALETTE;
+      p.appendChild(swatches(list, tool.color, function (c) { tool.color = c; setMode('pen'); penPanel(anchor); }));
+      p.appendChild(el('div', 'pop-l', '粗細'));
+      var ws = el('div', 'pop-row');
+      WIDTHS.forEach(function (w, i) { ws.appendChild(btn('btn sm' + (tool.width === w ? ' primary' : ''), ['細', '中', '粗'][i], function () { tool.width = w; setMode('pen'); penPanel(anchor); })); });
+      p.appendChild(ws);
+    });
   }
   function setBg(b) {
     var pid = tv.kind === 'group' ? S.groups[tv.gid].cur : S.cur, p = page(pid); if (!p) return;
@@ -1016,6 +1037,12 @@
     return true;
   }
   function stamp() { var d = new Date(); return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '-' + ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2); }
+  function saveProjectFile() {
+    var blob = new Blob([JSON.stringify(projectData())], { type: 'application/json' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (S.projName || 'Andice的共用畫板專案') + '_' + stamp() + '.wbproj.json'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 4000);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000); toast('💾 已下載專案檔');
+  }
+  function hasContent() { return S.pages.length > 1 || S.pages.some(function (p) { return p.objs.length; }); }
   $('b-proj').onclick = function () {
     modal(function (box) {
       box.appendChild(el('h3', '', '💾 專案'));
@@ -1023,11 +1050,7 @@
       var nm = el('input', 'wide-in'); nm.placeholder = '專案名稱（例如：三上數學第5課）'; nm.value = S.projName || ''; nm.oninput = function () { S.projName = nm.value.trim(); save(); };
       box.appendChild(nm);
       var r = el('div', 'proj-acts');
-      r.appendChild(btn('btn primary', '💾 存成專案檔', function () {
-        var blob = new Blob([JSON.stringify(projectData())], { type: 'application/json' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (S.projName || 'Andice的共用畫板專案') + '_' + stamp() + '.wbproj.json'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 4000);
-        setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000); toast('💾 已下載專案檔');
-      }));
+      r.appendChild(btn('btn primary', '💾 存成專案檔', saveProjectFile));
       r.appendChild(btn('btn', '📂 開啟專案檔', function () { $('proj-in').click(); }));
       r.appendChild(btn('btn', '📄 開新的空白專案', function () {
         confirmBox('要開一個新的空白專案嗎？目前的畫板頁面會全部清空（建議先存成專案檔）。', '開新專案', function () { loadProject({ app: 'class-whiteboard', pages: [{ id: WB.uid(), objs: [] }], imgs: {} }); toast('已開新的空白專案'); });
@@ -1066,18 +1089,30 @@
       box.appendChild(r);
     });
   };
+  function newClassroom() {
+    S = fresh(false); tv = { kind: 'page' }; V.hist = {}; save(); connect(); renderAll();
+    setTimeout(function () { $('b-join').click(); }, 200);
+  }
   $('b-end').onclick = function () {
     var n = Object.keys(S.students).length;
-    confirmBox('要結束這堂課、關閉教室嗎？' + (n ? '教室裡的 ' + n + ' 位學生都會被請出教室，學生名單和分組會清空。' : '') + '畫板頁面會保留。下次上課會換一組新的教室代碼。', '🚪 結束上課', function () {
-      var old = net; old && old.send({ t: 'closed' }, '*');
-      setTimeout(function () {
-        S = fresh(true); tv = { kind: 'page' }; save(); connect(); renderAll();
-        modal(function (box) {
-          box.appendChild(el('h3', '', '🚪 已結束上課'));
-          box.appendChild(el('p', '', '學生都已離開教室，畫板內容都還在。下次上課的新教室代碼是 <b>' + S.code + '</b>（按上方的教室代碼就會顯示 QR code）。'));
-          var row = el('div', 'modal-btns'); row.appendChild(btn('btn primary', '好', closeModal)); box.appendChild(row);
-        });
-      }, 400);
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🚪 結束上課'));
+      box.appendChild(el('p', '', (n ? '教室裡的 ' + n + ' 位學生都會被請出教室，' : '') + '畫板會清空，下次上課是新的教室和新的代碼。' + (hasContent() ? '<br><b>畫板內容要留著的話，請先按「💾 先存專案檔」。</b>' : '')));
+      var row = el('div', 'modal-btns');
+      row.appendChild(btn('btn', '取消', closeModal));
+      if (hasContent()) row.appendChild(btn('btn', '💾 先存專案檔', saveProjectFile));
+      row.appendChild(btn('btn danger', '🚪 結束上課', function () {
+        closeModal(); net && net.send({ t: 'closed' }, '*');
+        setTimeout(function () {
+          S = fresh(false); tv = { kind: 'page' }; V.hist = {}; save(); connect(); renderAll();
+          modal(function (b2) {
+            b2.appendChild(el('h3', '', '🚪 已結束上課'));
+            b2.appendChild(el('p', '', '學生都已離開。現在是新的教室（代碼 <b>' + S.code + '</b>）和空白畫板，可以直接開始下一堂課。'));
+            var r2 = el('div', 'modal-btns'); r2.appendChild(btn('btn', '好', closeModal)); r2.appendChild(btn('btn primary', '顯示 QR code', function () { $('b-join').click(); })); b2.appendChild(r2);
+          });
+        }, 400);
+      }));
+      box.appendChild(row);
     });
   };
   $('b-full').onclick = function () {
@@ -1110,8 +1145,20 @@
     if (S.workMins == null) S.workMins = 3; if (S.pagesOpen == null) S.pagesOpen = true; if (S.noteAll == null) S.noteAll = false;
     if (S.mode === 'work' && S.workEnd && Date.now() > S.workEnd) { S.mode = 'present'; S.workEnd = null; }
     V.setLocked(!!S.lock);
-    connect(); renderAll(); save();
-    if (!Object.keys(S.students).length) setTimeout(function () { $('b-join').click(); }, 300);
+    var had = Object.keys(S.students).length || hasContent();
+    if (!had) { S = fresh(false); connect(); renderAll(); save(); setTimeout(function () { $('b-join').click(); }, 300); return; }
+    /* 每次打開都是新教室；要接續剛剛的才選「接續」 */
+    renderAll(); $('h-code').textContent = '------';
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🖍️ 要開始新的一堂課嗎？'));
+      box.appendChild(el('p', '', '開新教室會有新的教室代碼和空白畫板。如果剛剛是不小心關掉或重新整理，可以選「接續剛剛的教室」（代碼 ' + S.code + '，學生和畫板都還在）。'));
+      var row = el('div', 'modal-btns col');
+      row.appendChild(btn('btn big primary', '🆕 開新教室（新代碼、空白畫板）', function () { closeModal(); newClassroom(); }));
+      if (hasContent()) row.appendChild(btn('btn', '💾 先把剛剛的畫板存成專案檔', saveProjectFile));
+      row.appendChild(btn('btn', '↩️ 接續剛剛的教室', function () { closeModal(); connect(); renderAll(); save(); }));
+      box.appendChild(row);
+    });
+    $('modal').onclick = function (e) { if (e.target.id === 'modal' && net) closeModal(); };
   }
   idbLoadImgs(function () { idbGet('s', 'S', boot); });
   window.__wb = { S: function () { return S; }, V: V };
