@@ -196,6 +196,9 @@
     onSelect: function (o) { if (pop && pop._obj && (!o || pop._obj !== o.id)) closePop(); },
     onContext: function (o, x, y) { if (S.mode === 'show') return; objMenu(o, x, y); },
     onWantSelect: function () { setMode('select'); },
+    onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
+    onLockedHint: function () { toast(S.lock ? '🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖' : '🔒 圈到的物件裡有鎖定的，按「⋯」可以一次解除鎖定'); },
+    onMulti: function (n) { if (n) toast('⭕ 圈到 ' + n + ' 個物件：拖曳移動、拉角落等比例縮放、⟳ 旋轉，按「⋯」或右鍵有更多功能'); },
     wheelZoom: true,
     onLive: function (bid, o) { distribute(bid, { t: 'live', o: o }); },
     onVideo: function (id, cmd, at) { distribute(V.bid, { t: 'vid', id: id, cmd: cmd, at: at }); },
@@ -208,6 +211,15 @@
   var vpT = null;
   var tool = { mode: 'pen', pen: '', color: COLORS[1], width: WIDTHS[1], shape: { shape: 'rect', sc: '#111111', sw: 3, fill: false, fc: '#ffd6e0', op: 1, n: 5, rows: 3, cols: 3 } };
   V.setTool(tool); V.setEditable(true);
+  /* 放大鏡快捷鍵：Mac 預設 Option（Ctrl 會被 Mac 系統拿去放大螢幕），Windows 預設 Ctrl */
+  var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  var ZKEYS = IS_MAC ? [['alt', '⌥ Option'], ['meta', '⌘ Command'], ['shift', '⇧ Shift'], ['z', 'Z 鍵'], ['ctrl', '⌃ Control']] : [['ctrl', 'Ctrl'], ['alt', 'Alt'], ['shift', 'Shift'], ['z', 'Z 鍵']];
+  var ZK_TEST = {}; try { ZK_TEST = JSON.parse(localStorage.getItem('wb-zktest') || '{}') || {}; } catch (e) {}
+  /* 已知的衝突：這個畫板自己或瀏覽器常用的組合 */
+  var APP_USED = IS_MAC ? { ctrl: '可能被系統縮放佔用', shift: '瀏覽器拿來左右捲動' } : { shift: '瀏覽器拿來左右捲動' };
+  function zkName(k) { var f = ZKEYS.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
+  try { V.zoomKey = localStorage.getItem('wb-zoomkey') || ''; } catch (e) { V.zoomKey = ''; }
+  if (!ZKEYS.some(function (x) { return x[0] === V.zoomKey; })) V.zoomKey = IS_MAC ? 'alt' : 'ctrl';
 
   function curBid() { return tv.kind === 'group' ? 'G:' + tv.gid : 'P:' + S.cur; }
   function showBoard() {
@@ -276,13 +288,14 @@
       V.clear(true); renderTools(); toast('🧹 已清除這一頁所有筆劃（按「上一步」可以復原）');
     }), '只清除筆劃，圖片、文字、圖形會留著');
     add(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動物件</small>', function () { setMode('select'); if (S.lock) toast('🔒 物件目前全部鎖定，要先按「解鎖」才能移動'); else toast('🖐️ 點物件可以移動、縮放；按右鍵或「⋯」有更多設定'); }));
+    add(btn('tb' + (tool.mode === 'lasso' ? ' on' : ''), '⭕<small>圈選</small>', function () { setMode('lasso'); toast('⭕ 在畫板上圈一圈，被圈到的物件和筆劃可以一起移動、縮放、旋轉、複製、刪除'); }), '一次圈選多個物件（包含筆劃）');
     var sb = add(btn('tb' + (tool.mode === 'shape' ? ' on' : ''), '🔷<small>圖形</small>', function () { shapePanel(sb); })); sb.dataset.pop = 1;
     var ib = add(btn('tb', '➕<small>插入 ▾</small>', function () { insertPanel(ib); }), '便利貼、文字、連結、影片、圖片、貼上、背景'); ib.dataset.pop = 1;
     add(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '全部已鎖' : '全部鎖定') + '</small>', function () {
       S.lock = !S.lock; save(); V.setLocked(S.lock); renderTools();
       toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解除全部鎖定');
     }), '鎖定或解鎖這一頁所有物件（單一物件請按右鍵鎖定）');
-    if (tv.kind === 'page') add(btn('tb' + (tool.mode === 'zoom' ? ' on' : ''), '🔍<small>放大鏡</small>', function () { setMode('zoom'); toast('🔍 框出要放大的地方；也可以按住 Ctrl 再轉滑鼠滾輪' + (S.mode !== 'work' ? '，學生畫面會一起放大' : '')); }), '快捷鍵：按住 Ctrl（Mac 用 ⌘）＋滑鼠滾輪');
+    if (tv.kind === 'page') { var zb = add(btn('tb' + (tool.mode === 'zoom' ? ' on' : ''), '🔍<small>放大鏡</small>', function () { setMode('zoom'); zoomPanel($('toolbar').querySelector('[data-zoom]')); }), '快捷鍵：按住 ' + zkName(V.zoomKey) + '＋滑鼠滾輪'); zb.dataset.pop = 1; zb.dataset.zoom = 1; }
     var u = add(btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); })); u.disabled = !V.canUndo();
     add(btn('tb danger', '🗑️<small>全清除</small>', function () {
       if (!V.objs.length) return toast('這一頁已經是空白的');
@@ -364,26 +377,82 @@
     r.appendChild(minus); r.appendChild(i); r.appendChild(plus); r.appendChild(out);
     return r;
   }
+  function zoomPanel(anchor) {
+    if (!anchor) return;
+    openPop(anchor, function (p) {
+      p.appendChild(el('div', 'pop-h', '🔍 放大鏡'));
+      p.appendChild(el('p', 'hint', '在畫板上框出要放大的地方（點一下是放大兩倍）' + (S.mode !== 'work' ? '，學生畫面會一起放大' : '') + '。'));
+      p.appendChild(el('div', 'pop-l tag t2', '⌨️ 快捷鍵：按住這個鍵＋轉滑鼠滾輪'));
+      var r = el('div', 'pop-row zk-row'), bt = {};
+      function badge(k) { var st = ZK_TEST[k], c = APP_USED[k]; return st === 'ok' ? '<i class="zk ok">✅ 可用</i>' : st === 'bad' ? '<i class="zk bad">⛔ 被佔用</i>' : c ? '<i class="zk warn">⚠️ ' + c + '</i>' : '<i class="zk">未測試</i>'; }
+      ZKEYS.forEach(function (k) { bt[k[0]] = r.appendChild(btn('btn sm zk-b' + (V.zoomKey === k[0] ? ' primary' : ''), k[1] + badge(k[0]), function () { V.zoomKey = k[0]; try { localStorage.setItem('wb-zoomkey', k[0]); } catch (e) {} toast('🔍 快捷鍵改成：按住 ' + k[1] + '＋滑鼠滾輪' + (ZK_TEST[k[0]] === 'bad' ? '（這個鍵剛剛測出來被佔用了）' : '')); renderTools(); zoomPanel($('toolbar').querySelector('[data-zoom]')); })); });
+      p.appendChild(r);
+      /* 自動偵測：按住某個鍵在測試框轉滾輪，網頁收得到就是可用；按住了卻收不到滾輪，就是被系統或其他程式佔用 */
+      var pad = el('div', 'zk-pad', '🧪 <b>自動偵測</b>：把滑鼠移到這個框裡，按住上面任一個鍵，轉一下滾輪再放開。<br>網頁收得到就標「✅ 可用」；收不到（被 Mac／Windows 或其他程式拿走）就標「⛔ 被佔用」。');
+      var held = null, got = false, heldAt = 0;
+      function keyOf(e) { return e.key === 'Control' ? 'ctrl' : e.key === 'Alt' ? 'alt' : e.key === 'Meta' ? 'meta' : e.key === 'Shift' ? 'shift' : (e.key === 'z' || e.key === 'Z') ? 'z' : null; }
+      function mark(k, v) { ZK_TEST[k] = v; try { localStorage.setItem('wb-zktest', JSON.stringify(ZK_TEST)); } catch (x) {} var f = ZKEYS.filter(function (x) { return x[0] === k; })[0]; if (f && bt[k]) bt[k].innerHTML = f[1] + badge(k); }
+      function kd(e) { var k = keyOf(e); if (!k || !bt[k] || !pad.matches(':hover')) return; if (held !== k) { held = k; got = false; heldAt = Date.now(); pad.classList.add('on'); pad.dataset.k = '按住 ' + zkName(k) + ' 中…現在轉一下滾輪'; } }
+      function ku(e) { var k = keyOf(e); if (!k || k !== held) return; pad.classList.remove('on'); held = null; if (!got && Date.now() - heldAt < 700) { pad.dataset.k = '按住久一點，一邊按住一邊轉滾輪'; } else if (!got) { mark(k, 'bad'); pad.dataset.k = '⛔ 按住 ' + zkName(k) + ' 時網頁收不到滾輪，被佔用了' + (V.zoomKey === k ? '，請換一個鍵' : ''); } }
+      pad.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        var k = held || (e.ctrlKey ? 'ctrl' : e.altKey ? 'alt' : e.metaKey ? 'meta' : e.shiftKey ? 'shift' : null);
+        if (!k || !bt[k]) { pad.dataset.k = '先按住一個鍵再轉滾輪'; return; }
+        var ok = k === 'z' ? !!held : (k === 'ctrl' ? e.ctrlKey : k === 'alt' ? e.altKey : k === 'meta' ? e.metaKey : e.shiftKey);
+        if (ok) { got = true; mark(k, 'ok'); pad.dataset.k = '✅ ' + zkName(k) + '＋滾輪可以用'; }
+      }, { passive: false });
+      window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
+      var mo = new MutationObserver(function () { if (!document.body.contains(pad)) { window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); mo.disconnect(); } });
+      mo.observe(document.body, { childList: true });
+      p.appendChild(pad);
+      p.appendChild(el('p', 'hint', (IS_MAC ? 'Mac 的 Control＋滾輪會被系統拿去放大整個螢幕，所以預設用 Option。觸控板兩指開合也可以放大。' : '') + '放大後直接轉滾輪可以上下移動畫面。這個設定只存在這台電腦。'));
+    });
+  }
+  function groupMenu(x, y) {
+    var list = V.members(); if (!list.length) return;
+    var lk = list.some(function (o) { return o.lk; });
+    openPopAt(x, y, function (p) {
+      p.classList.add('objmenu');
+      p.appendChild(el('div', 'pop-h', '⭕ 已圈選 ' + list.length + ' 個物件'));
+      function mi(h, fn, cls) { var b = btn('mi' + (cls ? ' ' + cls : ''), h, function () { fn(); }); p.appendChild(b); return b; }
+      mi(lk ? '🔓 全部解除鎖定' : '🔒 全部鎖定', function () { closePop(); V.groupOp('lock', !lk); renderTools(); });
+      if (!lk) {
+        p.appendChild(el('div', 'pop-l', '大小（整組等比例縮放）'));
+        var r = el('div', 'pop-row');
+        [['縮小 20%', 0.8], ['縮小 10%', 0.9], ['放大 10%', 1.1], ['放大 20%', 1.2]].forEach(function (z) { r.appendChild(btn('btn sm', z[0], function () { V.groupOp('scale', z[1]); renderTools(); })); });
+        p.appendChild(r);
+        p.appendChild(el('div', 'pop-l', '旋轉'));
+        r = el('div', 'pop-row');
+        [['↺ 15°', -15], ['↻ 15°', 15], ['↻ 90°', 90], ['↻ 180°', 180]].forEach(function (z) { r.appendChild(btn('btn sm', z[0], function () { V.groupOp('rot', z[1]); renderTools(); })); });
+        r.appendChild(btn('btn sm', '↔️ 鏡像', function () { V.groupOp('flip'); renderTools(); }));
+        p.appendChild(r);
+        p.appendChild(el('div', 'pop-l', '顏色（筆劃、文字、圖形線條一起換）'));
+        p.appendChild(swatches(PALETTE, null, function (c) { V.groupOp('color', c); renderTools(); }));
+      }
+      mi('📄 複製一份', function () { closePop(); V.groupOp('dup'); renderTools(); });
+      if (!lk) mi('🗑️ 全部刪除', function () { closePop(); V.groupOp('del'); renderTools(); }, 'danger');
+    });
+  }
   function insertPanel(anchor) {
     openPop(anchor, function (p) {
       p.classList.add('ins-pop');
-      p.appendChild(el('div', 'pop-l', '📝 便利貼（點顏色就貼上）'));
+      p.appendChild(el('div', 'pop-l tag t1', '📝 便利貼（點顏色就貼上）'));
       var r = el('div', 'pop-row');
       NOTE_COLORS.forEach(function (c) { var b = btn('note-sw', c[1], function () { closePop(); addNote(c[0]); }); b.style.background = c[0]; r.appendChild(b); });
       p.appendChild(r);
-      p.appendChild(el('div', 'pop-l', '🔤 文字・連結・影片'));
+      p.appendChild(el('div', 'pop-l tag t2', '🔤 文字・連結・影片'));
       r = el('div', 'pop-row');
       r.appendChild(btn('btn', '🔤 橫式文字', function () { closePop(); addText('', false); }));
       r.appendChild(btn('btn', '↕️ 直式文字', function () { closePop(); addText('', true); }));
       r.appendChild(btn('btn', '🔗 連結', function () { closePop(); addLinkBox(); }));
       r.appendChild(btn('btn', '🎬 影片', function () { closePop(); addLinkBox(true); }));
       p.appendChild(r);
-      p.appendChild(el('div', 'pop-l', '🖼️ 圖片'));
+      p.appendChild(el('div', 'pop-l tag t3', '🖼️ 圖片'));
       r = el('div', 'pop-row');
       r.appendChild(btn('btn', '🖼️ 選擇圖片檔', function () { closePop(); $('file-in').click(); }));
       r.appendChild(btn('btn', '📋 貼上（Ctrl+V）', function () { closePop(); pasteButton(); }));
       p.appendChild(r);
-      p.appendChild(el('div', 'pop-l', '▦ 畫布背景（移動物件時會對齊格子）'));
+      p.appendChild(el('div', 'pop-l tag t4', '▦ 畫布背景（移動物件時會對齊格子）'));
       r = el('div', 'pop-row');
       [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線']].forEach(function (b) { r.appendChild(btn('btn' + ((V.bg || '') === b[0] ? ' primary' : ''), b[1], function () { closePop(); setBg(b[0]); })); });
       p.appendChild(r);
@@ -465,7 +534,7 @@
   document.addEventListener('keydown', function (e) {
     var ed = document.activeElement && (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !ed) { e.preventDefault(); V.undo(); renderTools(); }
-    else if ((e.key === 'Delete' || e.key === 'Backspace') && !ed && V.sel) { e.preventDefault(); var so = V.find(V.sel); if (so && so.lk) return toast('🔒 這個物件鎖定了，要先解除鎖定'); closePop(); V.deleteSel(); renderTools(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && !ed && (V.sel || V.multi)) { e.preventDefault(); if (V.multi) { closePop(); V.groupOp('del'); renderTools(); return; } var so = V.find(V.sel); if (so && so.lk) return toast('🔒 這個物件鎖定了，要先解除鎖定'); closePop(); V.deleteSel(); renderTools(); }
     else if (e.key === 'Escape') { closePop(); if (document.fullscreenElement && S.mode === 'show') {} }
     else if (S.mode === 'show' && !ed && $('modal').hidden && /^(ArrowRight|ArrowDown|PageDown| )$/.test(e.key)) { e.preventDefault(); flip(1); }
     else if (S.mode === 'show' && !ed && $('modal').hidden && /^(ArrowLeft|ArrowUp|PageUp)$/.test(e.key)) { e.preventDefault(); flip(-1); }

@@ -160,7 +160,7 @@ window.WB = (function () {
     stage.appendChild(bgl); stage.appendChild(layer); stage.appendChild(base); stage.appendChild(top); stage.appendChild(vlayer); stage.appendChild(sel); host.appendChild(stage);
     var bctx = base.getContext('2d'), tctx = top.getContext('2d');
     var V = { objs: [], bid: null, tool: { mode: 'pen', color: '#111', width: 4 }, editable: false, hist: {} };
-    var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null, shaping = null, zooming = null;
+    var scale = 1, dpr = 1, dirty = true, lives = {}, mine = null, erasing = null, shaping = null, zooming = null, lasso = null;
     V.vp = { x: 0, y: 0, z: 1 };
     function S_() { return scale * V.vp.z; }
     function applyVp() {
@@ -201,6 +201,8 @@ window.WB = (function () {
       }
       if (mine) drawStroke(tctx, mine);
       if (shaping && shaping.o) { var so = shaping.o; tctx.save(); tctx.translate(so.x + so.w / 2, so.y + so.h / 2); drawShape(tctx, so); tctx.restore(); }
+      if (lasso && lasso.length > 2) { tctx.save(); tctx.strokeStyle = '#3157d5'; tctx.lineWidth = 2 / S_(); tctx.setLineDash([8 / S_(), 5 / S_()]); tctx.fillStyle = 'rgba(49,87,213,.08)'; tctx.beginPath(); tctx.moveTo(lasso[0], lasso[1]); for (var li = 2; li < lasso.length; li += 2) tctx.lineTo(lasso[li], lasso[li + 1]); tctx.closePath(); tctx.fill(); tctx.stroke(); tctx.restore(); }
+      if (V.multi && V.tool.mode === 'lasso') { tctx.save(); tctx.strokeStyle = 'rgba(49,87,213,.55)'; tctx.lineWidth = 1.5 / S_(); tctx.setLineDash([4 / S_(), 4 / S_()]); members().forEach(function (o) { var q = bboxOf(o); tctx.strokeRect(q[0], q[1], q[2] - q[0], q[3] - q[1]); }); tctx.restore(); }
       if (zooming && zooming.b) { var zb = zooming.b; tctx.strokeStyle = '#3157d5'; tctx.lineWidth = 2 / S_(); tctx.setLineDash([8 / S_(), 5 / S_()]); tctx.strokeRect(zb[0], zb[1], zb[2], zb[3]); tctx.fillStyle = 'rgba(49,87,213,.08)'; tctx.fillRect(zb[0], zb[1], zb[2], zb[3]); tctx.setLineDash([]); }
       if (erasing && erasing.cx != null) { tctx.strokeStyle = '#e44'; tctx.lineWidth = 2 / S_(); tctx.setLineDash([6, 4]); tctx.beginPath(); tctx.arc(erasing.cx, erasing.cy, erasing.r, 0, Math.PI * 2); tctx.stroke(); tctx.setLineDash([]); }
       requestAnimationFrame(frame);
@@ -259,6 +261,18 @@ window.WB = (function () {
     function select(id) { if (V.sel === id) return; finishEdit(); V.sel = id; dirty = true; opt.onSelect && opt.onSelect(id ? find(id) : null); }
     V.select = select;
     function drawSel() {
+      if (V.multi && V.tool.mode === 'lasso') {
+        var list = members(); if (!list.length) { V.setMulti(null); sel.innerHTML = ''; return; }
+        var lk = list.some(function (o) { return o.lk; }), gk = 'G' + (lk ? 'L' : '') + V.multi.join(',');
+        if (sel._id !== gk) {
+          sel.innerHTML = '<div class="box mgrp' + (lk ? ' lk' : '') + '"><i class="gm" data-h="gmove"></i>' + (lk ? '<i class="lkb" data-h="gmenu">🔒</i>' : '<i class="h nw" data-h="gnw"></i><i class="h ne" data-h="gne"></i><i class="h sw" data-h="gsw"></i><i class="h se" data-h="gse"></i><i class="rot" data-h="grot">⟳</i>') + '<i class="mnu" data-h="gmenu">⋯</i><span class="szl"></span></div>';
+          sel._id = gk;
+        }
+        var gb = groupBox(list), bx = sel.firstChild, pad = 6;
+        bx.style.left = (gb[0] - pad) + 'px'; bx.style.top = (gb[1] - pad) + 'px'; bx.style.width = (gb[2] - gb[0] + pad * 2) + 'px'; bx.style.height = (gb[3] - gb[1] + pad * 2) + 'px'; bx.style.transform = '';
+        bx.querySelector('.szl').textContent = '已圈選 ' + list.length + ' 個' + (lk ? '（有鎖定）' : '');
+        return;
+      }
       var o = V.sel && find(V.sel);
       if (!o || V.tool.mode !== 'select') { sel.innerHTML = ''; sel._id = null; return; }
       var key = o.id + (o.lk ? 'L' : '') + (opt.onContext ? 'M' : '');
@@ -285,9 +299,118 @@ window.WB = (function () {
     }
     V.change = function (patch) { var o = V.sel && find(V.sel); if (o) change(o, patch, true); };
     V.addObj = function (o) { V.objs.push(o); dirty = true; commit([o], []); select(o.id); };
-    V.deleteSel = function () { var o = V.sel && find(V.sel); if (!o || o.lk) return; select(null); applyOp(V.objs, { del: [o.id] }); dirty = true; commit([], [o]); };
+    V.deleteSel = function () { if (V.multi) return V.groupOp('del'); var o = V.sel && find(V.sel); if (!o || o.lk) return; select(null); applyOp(V.objs, { del: [o.id] }); dirty = true; commit([], [o]); };
+    /* ---------- 圈選：多個物件一起操作 ---------- */
+    V.multi = null;
+    var DEF_FS = { t: 36, n: 28, g: 32 };
+    function bboxOf(o) {
+      if (o.k === 's') {
+        var x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9, p = o.p, hw = (o.w || 4) / 2;
+        for (var i = 0; i < p.length; i += 2) { if (p[i] < x1) x1 = p[i]; if (p[i] > x2) x2 = p[i]; if (p[i + 1] < y1) y1 = p[i + 1]; if (p[i + 1] > y2) y2 = p[i + 1]; }
+        return [x1 - hw, y1 - hw, x2 + hw, y2 + hw];
+      }
+      var cx = o.x + o.w / 2, cy = o.y + o.h / 2, a = (o.r || 0) * Math.PI / 180, c = Math.abs(Math.cos(a)), sn = Math.abs(Math.sin(a));
+      var hw2 = (o.w * c + o.h * sn) / 2, hh = (o.w * sn + o.h * c) / 2;
+      return [cx - hw2, cy - hh, cx + hw2, cy + hh];
+    }
+    function members() { if (!V.multi) return []; var r = []; V.multi.forEach(function (id) { var o = find(id); if (o) r.push(o); }); return r; }
+    function groupBox(list) {
+      list = list || members(); if (!list.length) return null;
+      var b = [1e9, 1e9, -1e9, -1e9];
+      list.forEach(function (o) { var q = bboxOf(o); b[0] = Math.min(b[0], q[0]); b[1] = Math.min(b[1], q[1]); b[2] = Math.max(b[2], q[2]); b[3] = Math.max(b[3], q[3]); });
+      return b;
+    }
+    V.groupBox = function () { return groupBox(); };
+    V.members = members;
+    /* T = { cx, cy, k(縮放), a(旋轉度), dx, dy, flip } */
+    function xform(o, T) {
+      var k = T.k == null ? 1 : T.k, a = (T.a || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+      function mp(x, y) {
+        if (T.flip) x = 2 * T.cx - x;
+        var dx = (x - T.cx) * k, dy = (y - T.cy) * k;
+        return [T.cx + dx * ca - dy * sa + (T.dx || 0), T.cy + dx * sa + dy * ca + (T.dy || 0)];
+      }
+      var n = clone(o);
+      if (o.k === 's') {
+        var np = []; for (var i = 0; i < o.p.length; i += 2) { var q = mp(o.p[i], o.p[i + 1]); np.push(Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10); }
+        n.p = np; if (k !== 1) n.w = Math.max(0.5, Math.round(o.w * k * 10) / 10);
+        return n;
+      }
+      var c = mp(o.x + o.w / 2, o.y + o.h / 2), w = o.w * k, h = o.h * k;
+      n.x = Math.round(c[0] - w / 2); n.y = Math.round(c[1] - h / 2); n.w = Math.max(1, Math.round(w)); n.h = Math.max(1, Math.round(h));
+      var r = o.r || 0; if (T.flip) { r = -r; n.fx = !o.fx; }
+      n.r = Math.round((((r + (T.a || 0)) % 360) + 360) % 360);
+      if (k !== 1) {
+        if (DEF_FS[o.k]) n.fs = Math.max(6, Math.round((o.fs || DEF_FS[o.k]) * k));
+        if (o.k === 'g' && o.sw) n.sw = Math.max(1, Math.round(o.sw * k * 10) / 10);
+        if (o.k === 't' && o.bd) n.bw = Math.max(1, Math.round((o.bw || 3) * k * 10) / 10);
+      }
+      return n;
+    }
+    function replaceAll(news) { news.forEach(function (n) { for (var i = 0; i < V.objs.length; i++) if (V.objs[i].id === n.id) { V.objs[i] = n; break; } }); dirty = true; }
+    function groupCommit(news, origs) {
+      replaceAll(news);
+      hist().push({ add: news, rem: origs }); if (hist().length > 80) hist().shift();
+      opt.onOp && opt.onOp(V.bid, { del: news.map(function (o) { return o.id; }), add: news });
+    }
+    V.setMulti = function (ids) { V.multi = ids && ids.length ? ids : null; sel._id = null; dirty = true; opt.onMulti && opt.onMulti(V.multi ? V.multi.length : 0); };
+    V.groupOp = function (kind, val) {
+      var list = members(); if (!list.length) return;
+      var b = groupBox(list), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, locked = list.some(function (o) { return o.lk; });
+      if (kind === 'lock') { groupCommit(list.map(function (o) { var n = clone(o); if (val) n.lk = true; else delete n.lk; return n; }), list); sel._id = null; return; }
+      if (kind === 'dup') {
+        var cp = list.map(function (o) { var n = xform(o, { cx: 0, cy: 0, dx: 40, dy: 40 }); n.id = uid(); delete n.lk; return n; });
+        cp.forEach(function (n) { V.objs.push(n); }); dirty = true; commit(cp, []); V.setMulti(cp.map(function (n) { return n.id; })); return;
+      }
+      if (locked) return opt.onLockedHint && opt.onLockedHint();
+      if (kind === 'del') { V.setMulti(null); applyOp(V.objs, { del: list.map(function (o) { return o.id; }) }); dirty = true; commit([], list); return; }
+      var T = { cx: cx, cy: cy };
+      if (kind === 'rot') T.a = val; else if (kind === 'flip') T.flip = true; else if (kind === 'scale') T.k = val;
+      if (kind === 'color') { groupCommit(list.map(function (o) { var n = clone(o); if (o.k === 's' && o.t !== 'hl') n.c = val; else if (o.k === 't') n.c = val; else if (o.k === 'g') { if (o.txt) n.tc = val; else n.sc = val; } return n; }), list); return; }
+      groupCommit(list.map(function (o) { return xform(o, T); }), list);
+    };
+    var gdrag = null;
+    function groupDown(e, h) {
+      if (h === 'gmenu') { if (opt.onGroupMenu) opt.onGroupMenu(e.clientX, e.clientY); return; }
+      var list = members(); if (!list.length) return;
+      if (V.locked || list.some(function (o) { return o.lk; })) { opt.onLockedHint && opt.onLockedHint(); return; }
+      var b = groupBox(list), origs = {}; list.forEach(function (o) { origs[o.id] = o; });
+      var anc = { gnw: [b[2], b[3]], gne: [b[0], b[3]], gsw: [b[2], b[1]], gse: [b[0], b[1]] }[h];
+      var cor = { gnw: [b[0], b[1]], gne: [b[2], b[1]], gsw: [b[0], b[3]], gse: [b[2], b[3]] }[h];
+      gdrag = { h: h, p: pos(e), b: b, origs: origs, anc: anc, cor: cor, id: e.pointerId, moved: false, cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2 };
+      try { stage.setPointerCapture(e.pointerId); } catch (x) {}
+    }
+    function groupMove(e) {
+      var G = gdrag, p = pos(e);
+      if (!G.moved && Math.abs(p[0] - G.p[0]) + Math.abs(p[1] - G.p[1]) < 4) return;
+      G.moved = true; var T;
+      if (G.h === 'gmove') {
+        var dx = p[0] - G.p[0], dy = p[1] - G.p[1];
+        if (V.bg) { dx = Math.round((G.b[0] + dx) / 20) * 20 - G.b[0]; dy = Math.round((G.b[1] + dy) / 20) * 20 - G.b[1]; }
+        T = { cx: 0, cy: 0, dx: dx, dy: dy };
+      } else if (G.h === 'grot') {
+        var a = (Math.atan2(p[1] - G.cy, p[0] - G.cx) - Math.atan2(G.p[1] - G.cy, G.p[0] - G.cx)) * 180 / Math.PI;
+        var sn = Math.round(a / 15) * 15; if (Math.abs(a - sn) < 3) a = sn;
+        T = { cx: G.cx, cy: G.cy, a: Math.round(a) };
+      } else {
+        var vx = G.cor[0] - G.anc[0], vy = G.cor[1] - G.anc[1], L = vx * vx + vy * vy || 1;
+        var k = Math.max(0.08, ((p[0] - G.anc[0]) * vx + (p[1] - G.anc[1]) * vy) / L);
+        T = { cx: G.anc[0], cy: G.anc[1], k: k };
+      }
+      G.T = T;
+      var news = []; for (var id in G.origs) news.push(xform(G.origs[id], T));
+      replaceAll(news); G.news = news;
+      if (Date.now() - lastSync > 150) { lastSync = Date.now(); opt.onOp && opt.onOp(V.bid, { del: news.map(function (o) { return o.id; }), add: news }, true); }
+    }
+    function groupUp() {
+      var G = gdrag; gdrag = null; if (!G.moved || !G.news) return;
+      var origs = []; for (var id in G.origs) origs.push(G.origs[id]);
+      groupCommit(G.news, origs); sel._id = null;
+    }
     var lastSync = 0;
     function onDown(e) {
+      var gh = e.target.dataset && e.target.dataset.h;
+      if (gh && gh.charAt(0) === 'g' && V.multi) { e.preventDefault(); groupDown(e, gh); return; }
       if (V.tool.mode !== 'select' || V.locked) return;
       var h = e.target.dataset && e.target.dataset.h, oe = e.target.closest('.wb-obj');
       var o = h ? find(V.sel) : (oe ? find(oe.dataset.id) : null);
@@ -303,6 +426,7 @@ window.WB = (function () {
       try { stage.setPointerCapture(e.pointerId); } catch (x) {}
     }
     function onMove(e) {
+      if (gdrag && e.pointerId === gdrag.id) return groupMove(e);
       var D = dragStart; if (!D || e.pointerId !== D.id) return;
       var p = pos(e), o = find(D.o.id); if (!o) { dragStart = null; return; }
       if (!D.moved && Math.abs(p[0] - D.p[0]) + Math.abs(p[1] - D.p[1]) < 4) return;
@@ -333,6 +457,7 @@ window.WB = (function () {
       D.o = change(o, patch, false, null, !sync);
     }
     function onUp(e) {
+      if (gdrag && e.pointerId === gdrag.id) return groupUp();
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
       if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); return; }
@@ -372,13 +497,20 @@ window.WB = (function () {
       if (!opt.onContext) return;
       e.preventDefault();
       if (!V.editable) return;
-      var p = pos(e), o = objAt(p[0], p[1]);
+      var p = pos(e);
+      if (V.multi && opt.onGroupMenu) { var gb = groupBox(); if (gb && p[0] >= gb[0] - 8 && p[0] <= gb[2] + 8 && p[1] >= gb[1] - 8 && p[1] <= gb[3] + 8) return opt.onGroupMenu(e.clientX, e.clientY); }
+      var o = objAt(p[0], p[1]);
       if (o && opt.canEdit && !opt.canEdit(o)) o = null;
       opt.onContext(o, e.clientX, e.clientY);
     });
+    var zHeld = false;
+    window.addEventListener('keydown', function (e) { if ((e.key === 'z' || e.key === 'Z') && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA/.test(e.target.tagName) && !e.target.isContentEditable) zHeld = true; });
+    window.addEventListener('keyup', function (e) { if (e.key === 'z' || e.key === 'Z') zHeld = false; });
+    window.addEventListener('blur', function () { zHeld = false; });
     if (opt.wheelZoom) stage.addEventListener('wheel', function (e) {
       var r = top.getBoundingClientRect();
-      if (e.ctrlKey || e.metaKey) {
+      var zk = V.zoomKey || 'ctrl';
+      if (e.ctrlKey || (zk === 'alt' && e.altKey) || (zk === 'meta' && e.metaKey) || (zk === 'shift' && e.shiftKey) || (zk === 'z' && zHeld)) {
         e.preventDefault();
         var p = pos(e), z = Math.max(1, Math.min(8, V.vp.z * Math.exp(-e.deltaY * 0.0022)));
         var ox = (e.clientX - r.left) / scale, oy = (e.clientY - r.top) / scale;
@@ -472,8 +604,14 @@ window.WB = (function () {
         shaping = { p: p, o: null };
       } else if (V.tool.mode === 'zoom') {
         zooming = { p: p, b: null };
+      } else if (V.tool.mode === 'lasso') {
+        V.setMulti(null); lasso = [p[0], p[1]];
       }
     });
+    function inPoly(x, y, P) {
+      var c = false; for (var i = 0, j = P.length - 2; i < P.length; j = i, i += 2) { var xi = P[i], yi = P[i + 1], xj = P[j], yj = P[j + 1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; }
+      return c;
+    }
     function shapeFrom(a, b) {
       var T = V.tool.shape || {}, sh = T.shape || 'rect', dx = b[0] - a[0], dy = b[1] - a[1];
       if (sh === 'square' || sh === 'circle' || (sh === 'poly' && T.even !== false)) { var m = Math.max(Math.abs(dx), Math.abs(dy)); dx = (dx < 0 ? -1 : 1) * m; dy = (dy < 0 ? -1 : 1) * m; }
@@ -501,7 +639,8 @@ window.WB = (function () {
       var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; if (!evs.length) evs = [e];
       evs.forEach(function (ev) {
         var p = pos(ev);
-        if (shaping) { shaping.o = shapeFrom(shaping.p, p); }
+        if (lasso) { var ln = lasso.length; if (Math.abs(lasso[ln - 2] - p[0]) + Math.abs(lasso[ln - 1] - p[1]) >= 3) lasso.push(p[0], p[1]); }
+        else if (shaping) { shaping.o = shapeFrom(shaping.p, p); }
         else if (zooming) { zooming.b = [Math.min(zooming.p[0], p[0]), Math.min(zooming.p[1], p[1]), Math.abs(p[0] - zooming.p[0]), Math.abs(p[1] - zooming.p[1])]; }
         else if (mine) { var n = mine.p.length; if (Math.abs(mine.p[n - 2] - p[0]) + Math.abs(mine.p[n - 1] - p[1]) >= 2) mine.p.push(p[0], p[1]); }
         else if (erasing) {
@@ -514,6 +653,17 @@ window.WB = (function () {
     });
     function end(e) {
       if (e.pointerId !== pid) return; pid = null;
+      if (lasso) {
+        var poly = lasso; lasso = null; dirty = true;
+        if (poly.length < 6) return;
+        var ids = V.objs.filter(function (o) {
+          if (opt.canEdit && !opt.canEdit(o)) return false;
+          if (o.k === 's') { var inn = 0, tot = 0; for (var i = 0; i < o.p.length; i += 2) { tot++; if (inPoly(o.p[i], o.p[i + 1], poly)) inn++; } return tot && inn / tot >= 0.5; }
+          return inPoly(o.x + o.w / 2, o.y + o.h / 2, poly);
+        }).map(function (o) { return o.id; });
+        V.setMulti(ids);
+        return;
+      }
       if (shaping) {
         var so = shaping.o; shaping = null;
         if (so && (so.w > 6 || so.h > 6)) { V.objs.push(so); dirty = true; commit([so], []); }
@@ -543,7 +693,7 @@ window.WB = (function () {
     top.addEventListener('pointerup', end); top.addEventListener('pointercancel', end);
     top.addEventListener('touchstart', function (e) { if (V.editable) e.preventDefault(); }, { passive: false });
 
-    V.load = function (bid, objs) { finishEdit(); V.sel = null; if (opt.onSelect) opt.onSelect(null); V.bid = bid; V.objs = objs; lives = {}; mine = null; erasing = null; shaping = null; zooming = null; dirty = true; };
+    V.load = function (bid, objs) { finishEdit(); V.sel = null; V.multi = null; lasso = null; gdrag = null; opt.onMulti && opt.onMulti(0); if (opt.onSelect) opt.onSelect(null); V.bid = bid; V.objs = objs; lives = {}; mine = null; erasing = null; shaping = null; zooming = null; dirty = true; };
     V.find = find;
     V.apply = function (bid, op) { if (bid !== V.bid) return; applyOp(V.objs, op); (op.add || []).forEach(function (o) { delete lives[o.id]; }); dirty = true; };
     V.live = function (bid, o) { if (bid !== V.bid) return; lives[o.id] = { o: o, t: Date.now() }; };
@@ -572,13 +722,14 @@ window.WB = (function () {
       select(null); applyOp(V.objs, { del: rem.map(function (o) { return o.id; }) }); dirty = true; commit([], rem); return true;
     };
     V.setEditable = function (b) {
-      V.editable = b; var m = V.tool.mode, draw = b && (m === 'pen' || m === 'erase' || m === 'shape' || m === 'zoom');
+      V.editable = b; var m = V.tool.mode, draw = b && (m === 'pen' || m === 'erase' || m === 'shape' || m === 'zoom' || m === 'lasso');
       top.style.pointerEvents = draw ? 'auto' : 'none';
       top.style.cursor = m === 'erase' ? 'cell' : m === 'zoom' ? 'zoom-in' : 'crosshair'; top.style.touchAction = draw ? 'none' : 'auto';
       stage.classList.toggle('selecting', b && m === 'select' && !V.locked);
       stage.classList.toggle('own-select', b && m === 'select' && !!opt.canEdit);
       stage.style.touchAction = b && m === 'select' ? 'none' : '';
       if (m !== 'select') { finishEdit(); if (V.sel) select(null); }
+      if (m !== 'lasso' && V.multi) V.setMulti(null);
       dirty = true;
     };
     V.setLocked = function (b) { V.locked = b; if (b) select(null); V.setEditable(V.editable); };
