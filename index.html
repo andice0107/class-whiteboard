@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>共用畫板・老師端</title><link rel="stylesheet" href="style.css">
+</head><body class="host">
+<header class="bar">
+  <div class="brand">🖍️ 共用畫板</div>
+  <button class="code-pill" id="b-join" title="顯示 QR code 與加入連結">教室代碼 <b id="h-code">------</b> <span id="h-net" class="dot"></span></button>
+  <div class="seg" id="mode-seg"><button data-m="present">📽️ 簡報模式</button><button data-m="work">✏️ 作業模式</button></div>
+  <div class="grow"></div>
+  <button class="btn" id="b-wall">📺 監控牆</button>
+  <button class="btn" id="b-roster">👥 學生 <b id="h-count">0</b></button>
+  <button class="btn ghost" id="b-new" title="開新教室（換新的教室代碼）">🔄 開新教室</button>
+</header>
+<main class="host-main">
+  <aside class="pages" id="pages"></aside>
+  <section class="work">
+    <div class="ctx-bar" id="ctx-bar"></div>
+    <div class="board-host" id="board-host"></div>
+    <div class="toolbar" id="toolbar"></div>
+  </section>
+  <aside class="side" id="side" hidden></aside>
+</main>
+<div class="wall" id="wall" hidden></div>
+<div class="modal" id="modal" hidden><div class="modal-box" id="modal-box"></div></div>
+<div class="toast" id="toast"></div>
+<script src="vendor/mqtt.min.js"></script><script src="vendor/qrcode.js"></script>
+<script src="net.js"></script><script src="board.js"></script><script src="host.js"></script>
+</body></html>
