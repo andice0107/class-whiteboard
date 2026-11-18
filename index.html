@@ -1,30 +1,34 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>共用畫板・老師端</title><link rel="stylesheet" href="style.css?v=2611180244">
+<title>Andice的共用畫板・老師端</title><link rel="stylesheet" href="style.css?v=2611180336">
 </head><body class="host">
 <header class="bar">
-  <div class="brand">🖍️ 共用畫板</div>
+  <div class="brand">🖍️ Andice的共用畫板</div>
   <button class="code-pill" id="b-join" title="顯示 QR code 與加入連結">教室代碼 <b id="h-code">------</b> <span id="h-net" class="dot"></span></button>
   <div class="seg" id="mode-seg"><button data-m="present">📽️ 簡報模式</button><button data-m="work">✏️ 作業模式</button></div>
+  <div class="timer" id="timer" hidden></div>
   <div class="grow"></div>
-  <button class="btn" id="b-wall">📺 監控牆</button>
+  <button class="btn" id="b-task">📋 任務指派</button>
   <button class="btn" id="b-roster">👥 學生 <b id="h-count">0</b></button>
+  <button class="btn" id="b-proj">💾 專案</button>
   <button class="btn ghost" id="b-new" title="開新教室（換新的教室代碼）">🔄 開新教室</button>
 </header>
 <main class="host-main">
   <aside class="pages" id="pages"></aside>
+  <button class="pages-open" id="pages-open" hidden title="打開頁面欄">▶<small>頁面</small></button>
   <section class="work">
     <div class="ctx-bar" id="ctx-bar"></div>
     <div class="board-host" id="board-host"></div>
     <div class="objbar" id="objbar" hidden></div>
     <div class="toolbar" id="toolbar"></div>
     <input type="file" id="file-in" accept="image/*" multiple hidden>
+    <input type="file" id="proj-in" accept=".json,application/json" hidden>
   </section>
   <aside class="side" id="side" hidden></aside>
 </main>
-<div class="wall" id="wall" hidden></div>
+<div class="wall task" id="task" hidden></div>
 <div class="modal" id="modal" hidden><div class="modal-box" id="modal-box"></div></div>
 <div class="toast" id="toast"></div>
-<script src="vendor/mqtt.min.js?v=2611180244"></script><script src="vendor/qrcode.js?v=2611180244"></script>
-<script src="net.js?v=2611180244"></script><script src="board.js?v=2611180244"></script><script src="host.js?v=2611180244"></script>
+<script src="vendor/mqtt.min.js?v=2611180336"></script><script src="vendor/qrcode.js?v=2611180336"></script>
+<script src="net.js?v=2611180336"></script><script src="board.js?v=2611180336"></script><script src="host.js?v=2611180336"></script>
 </body></html>

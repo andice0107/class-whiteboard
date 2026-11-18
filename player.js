@@ -7,7 +7,7 @@
   var broker = hashArg('b'); broker = broker == null ? null : (+broker || 0);
   var store = WBNet.LOCAL ? sessionStorage : localStorage; /* 測試模式各分頁各自記 */
   var me = {}; try { me = JSON.parse(store.getItem(KEY)) || {}; } catch (e) {}
-  var net = null, V = null, joined = false, joinT = null, pingT = null, cur = { editable: false, title: '' };
+  var net = null, V = null, joined = false, joinT = null, pingT = null, cur = { pen: false, note: false, title: '' };
   var tool = { mode: 'pen', color: '#111111', width: 4 };
 
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
@@ -27,7 +27,7 @@
     var app = $('app'); app.innerHTML = ''; app.className = 'join-wrap';
     var card = el('div', 'join-card');
     card.appendChild(el('div', 'join-logo', '🖍️'));
-    card.appendChild(el('h1', '', '加入共用畫板'));
+    card.appendChild(el('h1', '', '加入 Andice的共用畫板'));
     if (msg) card.appendChild(el('div', 'join-err', msg));
     card.appendChild(el('label', '', '教室代碼（看大螢幕）'));
     var ci = el('input', 'big-in'); ci.inputMode = 'numeric'; ci.pattern = '[0-9]*'; ci.autocomplete = 'off'; ci.maxLength = 6; ci.placeholder = '6 位數字'; ci.value = me.code || ''; digits(ci, 6);
@@ -92,6 +92,7 @@
         V.load(d.bid, d.objs || []); setMeta(d); needImgs(d.objs || []); break;
       case 'meta': setMeta(d); break;
       case 'op': if (V && d.from !== me.sid) { V.apply(d.bid, d.op); needImgs(d.op.add || []); } break;
+      case 'vid': if (V && d.bid === V.bid && d.id) V.video(d.id, d.cmd, d.at); break;
       case 'img': if (d.id && d.d) { delete asked[d.id]; WB.setImg(d.id, d.d); } break;
       case 'live': if (V && d.from !== me.sid && d.o && d.o.by !== me.sid) V.live(d.bid, d.o); break;
       case 'hostup': send({ t: 'join' }); break;
@@ -117,6 +118,7 @@
     top.appendChild(el('span', 'st-net dot online'));
     top.appendChild(el('span', 'stu-title', ''));
     top.appendChild(el('span', 'grow'));
+    var ck = el('span', 'stu-clock'); ck.hidden = true; top.appendChild(ck);
     top.appendChild(el('span', 'stu-id', '學號 ' + me.sid));
     top.appendChild(btn('ic', '🚪', function () { if (confirm('要離開教室嗎？')) { me.cid = null; saveMe(); joinScreen(); } }));
     app.appendChild(top);
@@ -125,31 +127,76 @@
     V = WB.view(bh, {
       me: me.sid,
       canErase: function (o) { return o.by !== 'T'; },
+      canEdit: function (o) { return o && o.k === 'n' && o.by === me.sid && !!cur.note; },
+      onSelect: function () { renderTools(); },
       onOp: function (bid, op) { send({ t: 'op', bid: bid, op: op }); renderTools(); },
       onLive: function (bid, o) { send({ t: 'live', bid: bid, o: o }); }
     });
     V.setTool(tool);
     renderTools();
   }
+  var NOTE_COLORS = [['#fff3a6', '黃'], ['#ffd6e5', '粉紅'], ['#cfe8ff', '藍'], ['#d4f5d0', '綠'], ['#e6d9ff', '紫'], ['#ffe0c2', '橙']];
+  var endAt = null;
   function setMeta(d) {
     cur = d;
     var t = document.querySelector('.stu-title'); if (t) t.textContent = d.title || '';
-    V.setEditable(!!d.editable);
-    document.body.classList.toggle('can-draw', !!d.editable);
-    renderTools();
+    endAt = d.left != null ? Date.now() + d.left : null;
+    var can = !!(d.pen || d.note);
+    if (!d.pen && (tool.mode === 'pen' || tool.mode === 'erase')) tool.mode = d.note ? 'select' : 'none';
+    if (!d.note && tool.mode === 'select') tool.mode = d.pen ? 'pen' : 'none';
+    if (d.pen && !d.note && tool.mode === 'none' && !cur._seen) tool.mode = 'pen';
+    cur._seen = true;
+    V.setTool(tool); V.setEditable(can);
+    V.setBg(d.bg || '');
+    V.setViewport(d.vp || null);
+    document.body.classList.toggle('can-draw', can);
+    tick(); renderTools();
   }
+  function tick() {
+    var c = document.querySelector('.stu-clock'); if (!c) return;
+    if (endAt && cur.mode === 'work') { var s = Math.max(0, Math.ceil((endAt - Date.now()) / 1000)); c.hidden = false; c.textContent = '⏱ ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); c.classList.toggle('hurry', s <= 30); }
+    else c.hidden = true;
+  }
+  setInterval(tick, 500);
+  function setTool(m) { tool.mode = m; V.setTool(tool); renderTools(); }
   function renderTools() {
     var tb = document.querySelector('.stu-tools'); if (!tb) return;
     tb.innerHTML = '';
-    if (!cur.editable) {
-      tb.appendChild(el('span', 'lock-note', cur.mode === 'work' ? '🚫 老師目前沒有開放你的畫筆' : '👀 上課中，請看老師的畫面'));
+    if (!cur.pen && !cur.note) {
+      tb.appendChild(el('span', 'lock-note', cur.mode === 'work' || /作業/.test(cur.title || '') ? (/🔒|暫停/.test(cur.title || '') ? '🔒 老師暫停了你們的操作' : '🚫 老師目前沒有開放畫筆') : '👀 請看老師的畫面'));
       return;
     }
-    tb.appendChild(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '✏️<small>黑筆</small>', function () { tool.mode = 'pen'; V.setTool(tool); renderTools(); }));
-    tb.appendChild(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { tool.mode = 'erase'; V.setTool(tool); renderTools(); }));
-    tb.appendChild(btn('tb' + (tool.mode === 'none' ? ' on' : ''), '👆<small>點連結</small>', function () { tool.mode = 'none'; V.setTool(tool); renderTools(); }));
+    if (cur.pen) {
+      tb.appendChild(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '✏️<small>黑筆</small>', function () { setTool('pen'); }));
+      tb.appendChild(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { setTool('erase'); }));
+    }
+    if (cur.note) {
+      var nb = btn('tb', '📝<small>便利貼</small>', function () {
+        var box = document.querySelector('.note-pick'); if (box) { box.remove(); return; }
+        box = el('div', 'note-pick');
+        NOTE_COLORS.forEach(function (c) { var b = btn('note-sw', c[1], function () { box.remove(); addNote(c[0]); }); b.style.background = c[0]; box.appendChild(b); });
+        tb.appendChild(box);
+      });
+      tb.appendChild(nb);
+      tb.appendChild(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動便利貼</small>', function () { setTool('select'); }));
+    }
+    tb.appendChild(btn('tb' + (tool.mode === 'none' ? ' on' : ''), '👆<small>點連結</small>', function () { setTool('none'); }));
     var u = btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); }); u.disabled = !V.canUndo(); tb.appendChild(u);
-    tb.appendChild(btn('tb', '🗑️<small>全消除</small>', function () { if (confirm('要把你自己畫的全部擦掉嗎？')) { V.clear(false); renderTools(); } }));
+    if (cur.pen) tb.appendChild(btn('tb', '🗑️<small>全消除</small>', function () { if (confirm('要把你自己畫的筆劃全部擦掉嗎？')) { V.clear(false); renderTools(); } }));
+    var o = V.sel && V.find(V.sel);
+    if (o && o.k === 'n' && tool.mode === 'select') {
+      var bar = el('div', 'stu-objbar');
+      NOTE_COLORS.forEach(function (c) { var b = btn('sw' + (o.c === c[0] ? ' on' : ''), '', function () { V.change({ c: c[0] }); }); b.style.background = c[0]; bar.appendChild(b); });
+      bar.appendChild(btn('btn sm', '✏️ 寫字', function () { V.editText(o.id); }));
+      bar.appendChild(btn('btn sm danger', '🗑', function () { V.deleteSel(); renderTools(); }));
+      tb.appendChild(bar);
+    }
+  }
+  function addNote(c) {
+    var vp = V.vp, x = vp.x + WB.W / vp.z / 2 - 110 + (Math.random() * 80 - 40), y = vp.y + WB.H / vp.z / 2 - 110 + (Math.random() * 60 - 30);
+    tool.mode = 'select'; V.setTool(tool);
+    V.addObj({ id: WB.uid(), k: 'n', by: me.sid, x: Math.round(x), y: Math.round(y), w: 220, h: 220, r: 0, fx: false, c: c, txt: '', fs: 28 });
+    renderTools(); setTimeout(function () { V.editText(V.sel); }, 40);
   }
 
   if (me.code && me.sid && me.cid) connect(0); else joinScreen();
