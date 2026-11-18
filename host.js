@@ -237,7 +237,7 @@
       var cs = el('div', 'cast-bar');
       cs.appendChild(el('span', '', '📽️ 正在把 <b>' + gname(S.cast.src) + '</b> 的畫面投影給' + (S.cast.to ? ' ' + S.cast.to.map(gname).join('、') : (S.cast.src === 'T' ? '全部組別' : '其他組'))));
       if (S.cast.src !== 'T') cs.appendChild(btn('btn sm' + (S.cast.pen === false ? ' danger' : ' primary'), S.cast.pen === false ? '🚫 被分享的組不能畫' : '✏️ 被分享的組可以繼續畫', function () { S.cast.pen = S.cast.pen === false; save(); refreshAll(); renderCtx(); renderTask(); }));
-      cs.appendChild(btn('btn sm', '⏹ 停止投影', stopCast));
+      cs.appendChild(btn('btn sm' + (S.mode === 'work' ? ' primary' : ''), S.mode === 'work' ? '▶ 繼續作業（停止分享）' : '⏹ 停止投影', stopCast));
       c.appendChild(cs);
     }
   }
@@ -617,12 +617,17 @@
     V.setEditable(S.mode !== 'show');
     if (S.mode === 'show') { closePop(); if (V.sel) V.select(null); }
     renderNav();
-    var tm = $('timer'); tm.innerHTML = '';
+    var tm = $('timer'); tm.innerHTML = ''; tm.className = 'timer';
     if (S.mode === 'work') {
       tm.hidden = false;
       tm.appendChild(el('span', 'clock', S.workEnd ? '⏱ ' + fmt(S.workEnd - Date.now()) : '⏱ 不限時'));
       if (S.workEnd) tm.appendChild(btn('btn sm', '＋1分', function () { S.workEnd += 60000; save(); refreshAll(); renderMode(); }));
+      if (S.cast) tm.appendChild(btn('btn sm primary', '▶ 繼續作業', function () { stopCast(); })).title = '停止分享畫面，讓學生回到自己的作業';
       tm.appendChild(btn('btn sm danger', '結束作業', function () { endWork(false); }));
+    } else if (canResume()) {
+      tm.hidden = false; tm.className = 'timer paused';
+      tm.appendChild(el('span', 'clock', '⏸ 作業暫停中' + (S.workLeft ? '（還剩 ' + fmt(S.workLeft) + '）' : '')));
+      tm.appendChild(btn('btn sm primary', '▶ 繼續作業', resumeWork)).title = '讓學生回到剛剛的作業畫板繼續作答';
     } else tm.hidden = true;
   }
   setInterval(function () {
@@ -632,10 +637,30 @@
     }
   }, 500);
   var MODE_NAME = { present: '上課模式', show: '簡報模式', work: '作業模式' };
+  function canResume() { return S.mode !== 'work' && S.workPaused && liveGroups().some(function (g) { return S.groups[g].cur; }); }
+  function resumeWork() {
+    var left = S.workLeft;
+    S.mode = 'work'; S.workPaused = false; S.cast = null; S.zoom = null;
+    S.workEnd = left && left > 30000 ? Date.now() + left : left === null ? null : (S.workMins ? Date.now() + S.workMins * 60000 : null);
+    S.workLeft = null; tv = { kind: 'page' };
+    save(); V.setViewport(null); renderMode(); refreshAll(); showBoard(); renderTask();
+    toast('▶ 繼續作業，學生回到自己的畫板' + (S.workEnd ? '（剩 ' + fmt(S.workEnd - Date.now()) + '）' : '（不限時）'));
+  }
   function endWork(auto, to) {
     var was = S.mode; to = to || 'present';
+    if (was === 'work') { S.workPaused = true; S.workLeft = S.workEnd ? Math.max(0, S.workEnd - Date.now()) : null; }
     S.mode = to; S.workEnd = null;
     if (was === 'work') S.cast = null;
+    if (auto) setTimeout(function () {
+      modal(function (box) {
+        box.appendChild(el('h3', '', '⏰ 作業時間到了'));
+        box.appendChild(el('p', '', '學生已經回到老師的畫面（上課模式），他們的作答都有保留。還需要時間的話，可以讓學生繼續作業。'));
+        var row = el('div', 'modal-btns');
+        row.appendChild(btn('btn', '好', closeModal));
+        row.appendChild(btn('btn primary', '▶ 再給 ' + (S.workMins || 3) + ' 分鐘', function () { closeModal(); S.workLeft = 0; resumeWork(); }));
+        box.appendChild(row);
+      });
+    }, 50);
     if (to === 'show' && tv.kind !== 'page') tv = { kind: 'page' };
     save(); renderMode(); refreshAll(); showBoard(); renderTask();
     toast(was === 'work' ? (auto ? '⏰ 作業時間到了，已自動回到上課模式' : '已結束作業，切換到' + MODE_NAME[to]) : to === 'show' ? '📽️ 簡報模式：只能翻頁和播放影片，按 ← → 鍵或下方按鈕換頁' : '🧑‍🏫 上課模式：可以用所有工具，學生只能看');
@@ -654,7 +679,7 @@
     var b = btn('btn primary', '下一頁 ▶', function () { flip(1); }); b.disabled = i >= S.pages.length - 1; n.appendChild(b);
   }
   function startWork(mins) {
-    S.workMins = mins; S.workEnd = mins ? Date.now() + mins * 60000 : null; S.mode = 'work'; S.zoom = null;
+    S.workMins = mins; S.workEnd = mins ? Date.now() + mins * 60000 : null; S.mode = 'work'; S.zoom = null; S.workPaused = false; S.workLeft = null;
     if (S.cast && S.cast.src !== 'T') { /* 保留分享 */ } else S.cast = null;
     save(); V.setViewport(null); renderMode(); refreshAll(); renderCtx(); renderPages(); renderTask();
     toast('✏️ 作業模式開始' + (mins ? '，' + mins + ' 分鐘後自動回到上課模式' : '（不限時）'));
@@ -706,10 +731,10 @@
   function startCast(src, to) {
     if (src !== 'T' && !(S.groups[src] && S.groups[src].cur)) return toast('這一組還沒有畫板可以分享');
     S.cast = { src: src, pen: S.cast && S.cast.src === src ? S.cast.pen : true, to: to && to.length ? to : null };
-    save(); refreshAll(); renderCtx(); renderTask(); renderPages();
-    toast('📽️ 開始投影「' + gname(src) + '」的畫面');
+    save(); refreshAll(); renderCtx(); renderTask(); renderPages(); renderMode();
+    toast('📽️ 開始投影「' + gname(src) + '」的畫面' + (S.mode === 'work' ? '，要讓學生回去作答時按「▶ 繼續作業」' : ''));
   }
-  function stopCast() { S.cast = null; save(); refreshAll(); renderCtx(); renderTask(); renderPages(); toast('⏹ 已停止投影，' + (S.mode === 'work' ? '各組回到自己的作業' : '大家回到老師的畫面')); }
+  function stopCast() { S.cast = null; save(); refreshAll(); renderCtx(); renderTask(); renderPages(); renderMode(); toast('⏹ 已停止投影，' + (S.mode === 'work' ? '各組回到自己的作業' : '大家回到老師的畫面')); }
 
   /* ---------- 任務指派區（含監控） ---------- */
   var taskThumbs = {}, taskPageThumbs = {}, tPick = { pages: {}, groups: {} };

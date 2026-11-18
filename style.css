@@ -298,3 +298,5 @@ body.mode-show .seg button.on{background:#7048e8;color:#fff}
 .wb-g.editing{background:transparent}
 .wb-g.editing .wb-gt{pointer-events:auto;background:#fffdf5cc}
 .wb-t{box-sizing:border-box}
+.timer.paused{background:#eef3ff;border-color:var(--pri)}
+.timer.paused .clock{color:var(--pri);font-size:15px;min-width:0}
