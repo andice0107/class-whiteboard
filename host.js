@@ -1101,7 +1101,7 @@
     if (!fbUser) {
       sec.appendChild(btn('btn primary g-login', '<b>G</b> 用 Google 帳號登入', function () {
         var pv = new firebase.auth.GoogleAuthProvider(); pv.setCustomParameters({ prompt: 'select_account' });
-        fbApp.auth().signInWithPopup(pv).catch(function (e) { toast(/popup/.test(e.code || '') ? '登入視窗被擋住了，請允許跳出視窗後再試一次' : '登入沒有完成，請再試一次'); });
+        fbApp.auth().signInWithPopup(pv).catch(function (e) { var c = e.code || ''; if (c === 'auth/popup-blocked' || c === 'auth/operation-not-supported-in-this-environment') { toast('登入視窗被擋住，改用整頁登入…'); save(); setTimeout(function () { fbApp.auth().signInWithRedirect(pv); }, 600); } else if (c !== 'auth/popup-closed-by-user' && c !== 'auth/cancelled-popup-request') toast('登入沒有完成，請再試一次'); });
       }));
       sec.appendChild(el('p', 'hint', '登入後，在任何一台電腦用同一個 Google 帳號登入，就能看到、打開你存過的專案。只有你自己看得到。'));
       return sec;
