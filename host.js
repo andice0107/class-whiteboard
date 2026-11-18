@@ -1380,6 +1380,89 @@
     });
     $('modal').onclick = function (e) { if (e.target.id === 'modal' && net) closeModal(); };
   }
+  /* ---------- ❓ 如何使用（給使用者／給AI） ---------- */
+  var HELP_SAMPLE = {
+    app: 'class-whiteboard', v: 1, name: '範本：三上國語第一課',
+    pages: [
+      { id: 'p1', bg: '', objs: [
+        { id: 'a1', k: 't', by: 'T', x: 200, y: 280, w: 1200, h: 140, r: 0, fx: false, txt: '第一課　春天來了', v: false, fs: 80, c: '#111111' },
+        { id: 'a2', k: 't', by: 'T', x: 200, y: 450, w: 1200, h: 80, r: 0, fx: false, txt: '今天我們要學：生字、造詞、朗讀', v: false, fs: 40, c: '#555555' }
+      ] },
+      { id: 'p2', bg: 'dots', objs: [
+        { id: 'b1', k: 't', by: 'T', x: 80, y: 40, w: 900, h: 90, r: 0, fx: false, txt: '一、生字教學', v: false, fs: 56, c: '#d9480f' },
+        { id: 'b2', k: 'g', by: 'T', shape: 'rect', x: 100, y: 180, w: 520, h: 300, r: 0, fx: false, sc: '#1971c2', sw: 4, fill: true, fc: '#d0ebff', op: 1, txt: '春', tc: '#111111', fs: 160 },
+        { id: 'b3', k: 'n', by: 'T', x: 700, y: 180, w: 340, h: 300, r: 0, fx: false, c: '#fff3a6', txt: '想一想：春天有哪些東西？', fs: 32 }
+      ] }
+    ],
+    imgs: {}
+  };
+  var HELP_PROMPT = [
+    '你要幫我建立或修改「Andice的共用畫板」的專案檔（一個 JSON 檔，副檔名 .wbproj.json）。我會用畫板的「💾 專案 → 📂 開啟專案檔」直接打開它來上課，所以請只輸出一份「完整、合法、可以直接存檔」的 JSON，放在一個程式碼區塊裡，前後不要加多餘的說明（有想提醒的事請寫在區塊外的一兩句話）。',
+    '',
+    '【整體結構】',
+    '{ "app":"class-whiteboard", "v":1, "name":"專案名稱", "pages":[ {"id":"p1","bg":"","objs":[ …物件… ]}, … ], "imgs":{} }',
+    '- app 必須是 "class-whiteboard"，pages 至少一頁。',
+    '- 每頁：id（本專案內不重複的短字串）、bg（背景："" 空白、"dots" 格點、"grid" 格線）、objs（物件陣列，越後面的越在上層）。',
+    '- 畫布固定 1600 × 900（左上角是 0,0，x 向右、y 向下）。物件請放在這個範圍內，四周留 40～80 的邊。',
+    '',
+    '【物件通用欄位】id（全專案不重複）、k（種類）、by 固定寫 "T"、x、y、w、h（位置與大小）、r（旋轉角度，通常 0）、fx（左右翻轉，通常 false）。可選 lk:true 鎖定（學生與老師都不能誤拖）。',
+    '',
+    '【物件種類 k】',
+    '1. 文字 k:"t"：txt（文字，\\n 換行）、v（true 為直式文字）、fs（字級，18～120，標題 56～80、內文 32～44）、c（文字顏色，如 "#111111"）。可選 bd（外框顏色）與 bw（外框粗細）。w、h 要夠大：高度約 ≥ 字級 ×1.4 ×行數。',
+    '2. 便利貼 k:"n"：c 只能是這六色之一 "#fff3a6"黃 "#ffd6e5"粉 "#cfe8ff"藍 "#d4f5d0"綠 "#e6d9ff"紫 "#ffe0c2"橙；txt、fs（14～80）。常用大小 w:220～340,h:220～300。',
+    '3. 圖形 k:"g"：shape 可為 rect、square、circle、ellipse、tri、rtri、trap、para、rhom、line、arrow、grid、poly；sc（線色）、sw（線粗，1～12）、fill（是否填色）、fc（填色）、op（透明度 0～1，通常 1）。poly 要加 n（邊數 3～12）；grid 要加 rows、cols；line／arrow 要加 dir（1 或 -1）。圖形內可放字：txt、tc（字色）、fs。',
+    '4. YouTube 影片 k:"v"：yt（11 碼影片代號，例如網址 youtu.be/dQw4w9WgXcQ 的 dQw4w9WgXcQ）、st（起始秒數，預設 0）。建議 w:640,h:360。',
+    '5. 圖片 k:"i"：src 是圖片代號，圖片本身的 data URL 要放在最上層 imgs 裡，例如 "imgs":{"im1":"data:image/jpeg;base64,…"}。你若拿不到圖片就不要放圖片物件，改用文字或圖形，並在區塊外提醒我之後自己用「➕插入 → 圖片」補上。',
+    '6. 連結：用文字物件（k:"t"），txt 直接寫完整網址（https://…）即可，畫板會變成可以點的連結。',
+    '',
+    '【排版原則】每頁只放一個重點；標題在上方（y 約 40～120）；內容分區擺放，物件之間不要重疊；字要大，教室後排也看得到；顏色不超過 3～4 種，對比要清楚（淺底配深字）。',
+    '',
+    '【修改既有專案時】我會貼上現有的專案 JSON。請保留所有未提到的頁面與物件原封不動（含 id），只改我說的部分；新增物件的 id 不可與現有的重複；最後仍然輸出完整的 JSON。',
+    '',
+    '【完整範本（照這個格式寫）】',
+    JSON.stringify(HELP_SAMPLE, null, 1),
+    '',
+    '現在請依我的需求製作：'
+  ].join('\n');
+  function downloadSample() {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(HELP_SAMPLE, null, 1)], { type: 'application/json' }));
+    a.download = '範本專案.wbproj.json'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 3000);
+  }
+  function helpModal(tab) {
+    modal(function (box) {
+      box.classList.add('help-box');
+      var h = el('div', 'help-top');
+      h.appendChild(el('h3', '', '❓ 如何使用 Andice的共用畫板'));
+      h.appendChild(btn('btn', '✕ 關閉', closeModal)); box.appendChild(h);
+      var tabs = el('div', 'help-tabs'), body = el('div', 'help-body');
+      var tU = btn('btn', '📖 基本功能介紹', function () { helpModal('u'); });
+      var tA = btn('btn', '🤖 給AI的說明', function () { helpModal('a'); });
+      (tab === 'a' ? tA : tU).classList.add('primary'); tabs.appendChild(tU); tabs.appendChild(tA);
+      box.appendChild(tabs); box.appendChild(body);
+      if (tab === 'a') {
+        body.appendChild(el('p', 'hint', '想請 AI（Claude、ChatGPT、Gemini 都可以）幫你做或改上課內容時：<b>① 按下面的「複製提示詞」→ ② 貼給 AI，再接著寫你要的課程內容 → ③ 把 AI 給你的 JSON 存成檔案（副檔名要是 .wbproj.json，或直接用「💾 專案」裡的開啟）→ ④ 用「💾 專案 → 📂 開啟專案檔」打開。</b>要請 AI 修改現有專案：先用「💾 存成專案檔」下載，把檔案內容一起貼給 AI。'));
+        var r = el('div', 'proj-acts');
+        r.appendChild(btn('btn primary', '📋 複製給AI的提示詞（含範本）', function () { copy(HELP_PROMPT); toast('✅ 已複製，貼給 AI 就可以了'); }));
+        r.appendChild(btn('btn', '⬇ 下載範本專案檔', downloadSample));
+        r.appendChild(btn('btn', '📂 直接開啟範本看效果', function () { confirmBox('開啟範本會取代目前畫板的所有頁面（建議先存成專案檔）。要開啟嗎？', '開啟範本', function () { loadProject(JSON.parse(JSON.stringify(HELP_SAMPLE))); toast('已開啟範本'); }); }));
+        body.appendChild(r);
+        body.appendChild(el('div', 'pop-l sec', '提示詞全文（給 AI 看的；可以先預覽）'));
+        var ta = el('textarea', 'help-ta'); ta.readOnly = true; ta.value = HELP_PROMPT; ta.onclick = function () { ta.select(); }; body.appendChild(ta);
+        return;
+      }
+      body.innerHTML = HELP_USER;
+    });
+  }
+  var HELP_USER =
+    '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
+    '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、背景（空白／格點／格線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。</li><li><b>上一步</b>：復原。</li></ul>' +
+    '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
+    '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
+    '<h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
+    '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
+  $('b-help').onclick = function () { helpModal('u'); };
+
   idbLoadImgs(function () { idbGet('s', 'S', boot); });
   window.__wb = { S: function () { return S; }, V: V };
 })();
