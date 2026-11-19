@@ -239,6 +239,7 @@ window.WB = (function () {
         e.classList.toggle('sel', V.sel === o.id);
         e.classList.toggle('mine', !!(opt.canEdit && opt.canEdit(o)));
         e.classList.toggle('lk', !!o.lk);
+        e.classList.toggle('hd', !!o.hd && !!opt.showHidden); e.style.display = (o.hd && !opt.showHidden) ? 'none' : '';
         if (o.k === 'i') { var im = e.firstChild, src = imgs[o.src] || ''; if (im.getAttribute('src') !== src) { if (src) im.src = src; else im.removeAttribute('src'); } e.classList.toggle('loading', !src); }
         else if (o.k === 'v') { /* iframe 不重建，避免影片重新載入 */ }
         else {
@@ -358,6 +359,7 @@ window.WB = (function () {
       var list = members(); if (!list.length) return;
       var b = groupBox(list), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, locked = list.some(function (o) { return o.lk; });
       if (kind === 'lock') { groupCommit(list.map(function (o) { var n = clone(o); if (val) n.lk = true; else delete n.lk; return n; }), list); sel._id = null; return; }
+      if (kind === 'hide') { groupCommit(list.filter(function (o) { return o.k !== 's'; }).map(function (o) { var n = clone(o); if (val) n.hd = true; else delete n.hd; return n; }), list.filter(function (o) { return o.k !== 's'; })); return; }
       if (kind === 'dup') {
         var cp = list.map(function (o) { var n = xform(o, { cx: 0, cy: 0, dx: 40, dy: 40 }); n.id = uid(); delete n.lk; return n; });
         cp.forEach(function (n) { V.objs.push(n); }); dirty = true; commit(cp, []); V.setMulti(cp.map(function (n) { return n.id; })); return;

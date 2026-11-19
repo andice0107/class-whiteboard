@@ -142,6 +142,7 @@
       }
       online[sid] = Date.now(); delete lastSent[sid];
       net.send({ t: 'welcome', cid: d.cid, sid: sid }, sid);
+      if (CD) cdSend(sid);
       refresh(sid, true); save(); renderRoster(); renderTask(); return;
     }
     if (!st || st.cid !== d.cid) { if (st) net.send({ t: 'replaced', cid: d.cid }, sid); return; }
@@ -199,7 +200,7 @@
     onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
     onLockedHint: function () { toast(S.lock ? '🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖' : '🔒 圈到的物件裡有鎖定的，按「⋯」可以一次解除鎖定'); },
     onMulti: function (n) { if (n) toast('⭕ 圈到 ' + n + ' 個物件：拖曳移動、拉角落等比例縮放、⟳ 旋轉，按「⋯」或右鍵有更多功能'); },
-    wheelZoom: true, mergedSelect: true,
+    wheelZoom: true, mergedSelect: true, showHidden: true,
     onLive: function (bid, o) { distribute(bid, { t: 'live', o: o }); },
     onVideo: function (id, cmd, at) { distribute(V.bid, { t: 'vid', id: id, cmd: cmd, at: at }); },
     onViewport: function (vp) {
@@ -318,6 +319,7 @@
       toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解除全部鎖定');
     }), '鎖定或解鎖這一頁所有物件（單一物件請按右鍵鎖定）');
     if (tv.kind === 'page') { var zb = add(btn('tb' + (tool.mode === 'zoom' ? ' on' : ''), '🔍<small>放大鏡</small>', function () { setMode('zoom'); zoomPanel($('toolbar').querySelector('[data-zoom]')); }), '快捷鍵：按住 ' + zkName(V.zoomKey) + '＋滑鼠滾輪'); zb.dataset.pop = 1; zb.dataset.zoom = 1; }
+    var cb = add(btn('tb', '🎲<small>課堂 ▾</small>', function () { classPanel(cb); }), '隨機點名、抽籤、分組抽籤、倒數計時、隱藏與揭曉'); cb.dataset.pop = 1;
     var ab = add(btn('tb', '🎬<small>動作 ▾</small>', function () { actionPanel(ab); }), '上一步、下一步（滑鼠移上來就會展開；平板按一下）'); ab.dataset.pop = 1; ab.dataset.act = 1;
     ab.disabled = false; ab.classList.toggle('dim', !V.canUndo() && !V.canRedo());
     if (CAN_HOVER) { ab.onmouseenter = function () { actionPanel(ab, true); }; ab.onmouseleave = function () { actionLeave(); }; }
@@ -461,6 +463,9 @@
       p.appendChild(el('div', 'pop-h', '⭕ 已圈選 ' + list.length + ' 個物件'));
       function mi(h, fn, cls) { var b = btn('mi' + (cls ? ' ' + cls : ''), h, function () { fn(); }); p.appendChild(b); return b; }
       mi(lk ? '🔓 全部解除鎖定' : '🔒 全部鎖定', function () { closePop(); V.groupOp('lock', !lk); renderTools(); });
+      var hdn = list.some(function (o) { return o.hd; });
+      mi(hdn ? '👁 全部揭曉給學生看' : '🙈 全部先隱藏（學生看不到）', function () { closePop(); V.groupOp('hide', !hdn); renderTools(); });
+
       if (!lk) {
         p.appendChild(el('div', 'pop-l', '大小（整組等比例縮放）'));
         var r = el('div', 'pop-row');
@@ -528,6 +533,7 @@
       function chg(patch) { V.change(patch); again(); }
       var h = el('div', 'pop-h'); h.appendChild(el('span', '', KIND[o.k] || '物件')); m.appendChild(h);
       m.appendChild(btn('mi' + (o.lk ? ' on' : ''), o.lk ? '🔓 解除鎖定這個物件' : '🔒 鎖定這個物件（不會被移動或修改）', function () { chg({ lk: !o.lk }); }));
+      if (o.k !== 's') m.appendChild(btn('mi' + (o.hd ? ' on' : ''), o.hd ? '👁 揭曉給學生看' : '🙈 先隱藏（學生看不到，之後再揭曉）', function () { chg({ hd: o.hd ? false : true }); }));
       if (o.lk) { m.appendChild(el('div', 'pop-l', '解除鎖定後才能移動、縮放、修改。')); return; }
       if (o.k === 't' || o.k === 'n' || o.k === 'g') {
         var r1 = row();
@@ -1405,6 +1411,166 @@
     });
     $('modal').onclick = function (e) { if (e.target.id === 'modal' && net) closeModal(); };
   }
+  /* ---------- 🎲 課堂工具：點名、抽籤、分組抽籤、倒數計時、隱藏／揭曉 ---------- */
+  function stuLabel(sid) { var n = S.roster && S.roster[sid]; return n ? n + '（' + sid + '）' : '學號 ' + sid; }
+  function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  var drawnPool = { stu: [], lot: [] };
+  /* 抽的動畫：名字快速跳動，越跳越慢，最後停在結果 */
+  function spin(names, result, show, done) {
+    var n = 0, total = 22;
+    (function step() {
+      if (n >= total) { show(result, true); done && done(); return; }
+      show(names[Math.floor(Math.random() * names.length)], false); n++;
+      setTimeout(step, 40 + n * n * 0.45);
+    })();
+  }
+  function drawModal(kind) {
+    var isStu = kind === 'stu', title = isStu ? '🎯 隨機點名' : '🎟️ 抽籤';
+    modal(function (box) {
+      box.classList.add('draw-box');
+      var hd = el('div', 'help-top'); hd.appendChild(el('h3', '', title)); hd.appendChild(btn('btn', '✕ 關閉', closeModal)); box.appendChild(hd);
+      var optNo = true, optOnline = true, ta = null;
+      if (!isStu) {
+        var saved = ''; try { saved = localStorage.getItem('wb-lottery') || ''; } catch (e) {}
+        box.appendChild(el('p', 'hint', '一行一個項目（可以是名字、題號、小組…）：'));
+        ta = el('textarea', 'help-ta'); ta.style.height = '110px'; ta.value = saved; ta.placeholder = '例如：\n第1題\n第2題\n第3題'; box.appendChild(ta);
+        ta.oninput = function () { try { localStorage.setItem('wb-lottery', ta.value); } catch (e) {} drawnPool.lot = []; upd(); };
+      }
+      var opts = el('div', 'draw-opts');
+      var c1 = el('label', '', '<input type="checkbox" checked> 抽過的不再抽'); c1.firstChild.onchange = function () { optNo = this.checked; if (!optNo) drawnPool[kind] = []; upd(); };
+      opts.appendChild(c1);
+      if (isStu) { var c2 = el('label', '', '<input type="checkbox" checked> 只抽目前在線的學生'); c2.firstChild.onchange = function () { optOnline = this.checked; upd(); }; opts.appendChild(c2); }
+      box.appendChild(opts);
+      var big = el('div', 'draw-big', '？'); box.appendChild(big);
+      var info = el('div', 'hint draw-info'); box.appendChild(info);
+      var row = el('div', 'modal-btns');
+      var go = btn('btn primary draw-go', '🎲 抽！', function () {
+        var pool = poolNow(); if (!pool.length) return;
+        go.disabled = true; big.classList.remove('win');
+        var r = pool[Math.floor(Math.random() * pool.length)];
+        spin(pool.map(lab), r, function (v, fin) { big.textContent = fin ? lab(v) : v; big.classList.toggle('win', !!fin); }, function () {
+          if (optNo) drawnPool[kind].push(r); go.disabled = false; upd();
+        });
+      });
+      row.appendChild(go);
+      row.appendChild(btn('btn', '🔄 重新開始（全部可再抽）', function () { drawnPool[kind] = []; big.textContent = '？'; big.classList.remove('win'); upd(); }));
+      box.appendChild(row);
+      function lab(v) { return isStu ? stuLabel(v) : v; }
+      function all() {
+        if (isStu) return Object.keys(S.students).filter(function (s) { return !optOnline || online[s]; }).sort();
+        return ta.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+      }
+      function poolNow() { var d = drawnPool[kind]; return all().filter(function (v) { return !optNo || d.indexOf(v) < 0; }); }
+      function upd() {
+        var a = all(), p = poolNow();
+        info.textContent = !a.length ? (isStu ? '目前沒有學生（還沒有人加入，或取消「只抽在線」）' : '請先在上面輸入要抽的項目') : p.length ? '還有 ' + p.length + ' / ' + a.length + ' 個可以抽' + (drawnPool[kind].length ? '；已抽過：' + drawnPool[kind].map(lab).join('、') : '') : '都抽完了！按「重新開始」可以再抽';
+        go.disabled = !p.length;
+      }
+      upd();
+    });
+  }
+  function groupDrawModal() {
+    modal(function (box) {
+      box.classList.add('draw-box');
+      var hd = el('div', 'help-top'); hd.appendChild(el('h3', '', '👥 分組抽籤')); hd.appendChild(btn('btn', '✕ 關閉', closeModal)); box.appendChild(hd);
+      var mode = 'n', num = 4, onlyOn = true, res = null;
+      var r1 = el('div', 'draw-opts');
+      var sel = el('select', 'wide-in'); sel.style.width = 'auto'; sel.innerHTML = '<option value="n">分成幾組</option><option value="m">每組幾人</option>'; sel.onchange = function () { mode = sel.value; };
+      var inp = el('input', 'wide-in'); inp.type = 'number'; inp.min = 1; inp.max = 30; inp.value = num; inp.style.width = '80px'; inp.oninput = function () { num = Math.max(1, Math.min(30, +inp.value || 1)); };
+      r1.appendChild(sel); r1.appendChild(inp);
+      var c2 = el('label', '', '<input type="checkbox" checked> 只分目前在線的學生'); c2.firstChild.onchange = function () { onlyOn = this.checked; }; r1.appendChild(c2);
+      box.appendChild(r1);
+      var out = el('div', 'draw-groups'); box.appendChild(out);
+      var msg = el('div', 'hint'); box.appendChild(msg);
+      var row = el('div', 'modal-btns');
+      var apply = btn('btn primary', '✅ 套用成分組（真的分到各組）', function () {
+        if (!res) return;
+        customGroups().forEach(function (g) { delete S.groups[g]; });
+        res.forEach(function (list) { var g = newGroup(); if (g) moveTo(list, g); });
+        closeModal(); toast('✅ 已分好 ' + res.length + ' 組，可在「👥 學生」看到');
+      });
+      apply.disabled = true;
+      row.appendChild(btn('btn', '🎲 抽籤分組', function () {
+        var ids = shuffle(Object.keys(S.students).filter(function (s) { return !onlyOn || online[s]; }));
+        if (!ids.length) { msg.textContent = '沒有可以分組的學生。'; return; }
+        var k = mode === 'n' ? Math.min(num, ids.length) : Math.max(1, Math.ceil(ids.length / num));
+        res = []; for (var i = 0; i < k; i++) res.push([]);
+        ids.forEach(function (s, i) { res[i % k].push(s); });
+        res.forEach(function (l) { l.sort(); });
+        out.innerHTML = ''; res.forEach(function (l, i) { out.appendChild(el('div', 'draw-g', '<b>第 ' + (i + 1) + ' 組</b>（' + l.length + ' 人）<br>' + l.map(stuLabel).join('、'))); });
+        msg.textContent = '這只是抽籤結果；按「套用成分組」才會真的分組（會取代目前自訂的分組）。'; apply.disabled = false;
+      }));
+      row.appendChild(apply); box.appendChild(row);
+    });
+  }
+  /* 倒數計時器：老師畫面和學生畫面都會顯示 */
+  var CD = null, cdBox = null;
+  function cdLeft() { return !CD ? 0 : CD.paused ? CD.left : Math.max(0, CD.end - Date.now()); }
+  function cdMsg() { return CD ? { t: 'cd', total: CD.total, left: cdLeft(), paused: !!CD.paused } : { t: 'cd', off: 1 }; }
+  function cdSend(sid) { if (net) net.send(cdMsg(), sid || '*'); }
+  function beep(n) {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext, c = new AC();
+      for (var i = 0; i < (n || 3); i++) { var o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.25, c.currentTime + i * 0.35); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + i * 0.35 + 0.3); o.start(c.currentTime + i * 0.35); o.stop(c.currentTime + i * 0.35 + 0.32); }
+    } catch (e) {}
+  }
+  function cdFmt(ms) { var s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  function cdDraw() {
+    if (!CD) { if (cdBox) { cdBox.remove(); cdBox = null; } return; }
+    if (!cdBox) {
+      cdBox = el('div', 'cd-host'); document.body.appendChild(cdBox);
+      cdBox.innerHTML = '<span class="cd-t"></span><button class="cd-b" data-a="p" title="暫停／繼續">⏸</button><button class="cd-b" data-a="r" title="重來">↺</button><button class="cd-b" data-a="x" title="關掉計時器">✕</button>';
+      cdBox.onclick = function (e) {
+        var a = e.target.dataset && e.target.dataset.a; if (!a) return;
+        if (a === 'x') { CD = null; cdSend(); cdDraw(); return; }
+        if (a === 'r') { cdStart(CD.total); return; }
+        if (CD.paused) { CD.paused = false; CD.end = Date.now() + CD.left; } else { CD.left = cdLeft(); CD.paused = true; }
+        cdSend(); cdDraw();
+      };
+    }
+    var l = cdLeft();
+    cdBox.querySelector('.cd-t').textContent = (l <= 0 ? '⏰ 時間到！' : '⏱ ' + cdFmt(l));
+    cdBox.querySelector('[data-a="p"]').textContent = CD.paused ? '▶' : '⏸';
+    cdBox.classList.toggle('hurry', l > 0 && l <= 10000); cdBox.classList.toggle('done', l <= 0);
+  }
+  function cdStart(ms) { CD = { total: ms, left: ms, end: Date.now() + ms, paused: false, fired: false }; cdSend(); cdDraw(); }
+  setInterval(function () { if (!CD) return; if (!CD.paused && !CD.fired && cdLeft() <= 0) { CD.fired = true; beep(3); } cdDraw(); }, 250);
+  function timerModal() {
+    modal(function (box) {
+      var hd = el('div', 'help-top'); hd.appendChild(el('h3', '', '⏱️ 倒數計時')); hd.appendChild(btn('btn', '✕ 關閉', closeModal)); box.appendChild(hd);
+      box.appendChild(el('p', 'hint', '計時器會出現在畫面上方，學生的畫面也會同步顯示；時間到會響三聲（學生那邊的聲音依裝置而定）。'));
+      var r = el('div', 'proj-acts');
+      [1, 2, 3, 5, 10, 15, 20].forEach(function (m) { r.appendChild(btn('btn', m + ' 分鐘', function () { closeModal(); cdStart(m * 60000); })); });
+      box.appendChild(r);
+      var c = el('div', 'draw-opts'); c.innerHTML = '自訂：<input class="wide-in cd-m" type="number" min="0" max="180" value="0" style="width:80px"> 分 <input class="wide-in cd-s" type="number" min="0" max="59" value="30" style="width:80px"> 秒';
+      c.appendChild(btn('btn primary', '▶ 開始', function () { var ms = ((+c.querySelector('.cd-m').value || 0) * 60 + (+c.querySelector('.cd-s').value || 0)) * 1000; if (ms <= 0) return toast('請輸入大於 0 的時間'); closeModal(); cdStart(ms); }));
+      box.appendChild(c);
+    });
+  }
+  /* 隱藏／揭曉：隱藏的物件學生看不到，老師這邊會半透明加虛線框 */
+  function hiddenCount() { return V.objs.filter(function (o) { return o.hd; }).length; }
+  function revealAll() {
+    var list = V.objs.filter(function (o) { return o.hd; }); if (!list.length) return toast('這一頁沒有隱藏的物件');
+    V.setMulti(list.map(function (o) { return o.id; })); V.groupOp('hide', false); V.setMulti(null); toast('👁 已揭曉 ' + list.length + ' 個物件，學生看得到了');
+  }
+  function classPanel(anchor) {
+    openPop(anchor, function (p) {
+      p.appendChild(el('div', 'pop-h', '🎲 課堂工具'));
+      function mi(h, fn) { p.appendChild(btn('mi', h, function () { closePop(); fn(); })); }
+      mi('🎯 隨機點名', function () { drawModal('stu'); });
+      mi('🎟️ 抽籤（自己輸入名單）', function () { drawModal('lot'); });
+      mi('👥 分組抽籤', groupDrawModal);
+      mi('⏱️ 倒數計時' + (CD ? '（進行中）' : ''), timerModal);
+      p.appendChild(el('div', 'pop-l', '隱藏與揭曉：先把答案或內容藏起來，要用時再給學生看'));
+      mi('🙈 隱藏目前選取的物件', function () {
+        var ids = V.multi && V.multi.length ? V.multi : V.sel ? [V.sel] : [];
+        if (!ids.length) return toast('請先用「選取」點一個物件（或圈選多個），再按這個');
+        if (!V.multi || !V.multi.length) V.setMulti(ids);
+        V.groupOp('hide', true); toast('🙈 已隱藏，學生看不到；你這邊是半透明虛線框');
+      });
+      mi('👁 揭曉這一頁所有隱藏的物件（' + hiddenCount() + '）', revealAll);
+    });
+  }
   /* ---------- ❓ 如何使用（給使用者／給AI） ---------- */
   var HELP_SAMPLE = {
     app: 'class-whiteboard', v: 1, name: '範本：三上國語第一課',
@@ -1430,7 +1596,7 @@
     '- 每頁：id（本專案內不重複的短字串）、bg（背景："" 空白、"dots" 格點、"grid" 格線）、objs（物件陣列，越後面的越在上層）。',
     '- 畫布固定 1600 × 900（左上角是 0,0，x 向右、y 向下）。物件請放在這個範圍內，四周留 40～80 的邊。',
     '',
-    '【物件通用欄位】id（全專案不重複）、k（種類）、by 固定寫 "T"、x、y、w、h（位置與大小）、r（旋轉角度，通常 0）、fx（左右翻轉，通常 false）。可選 lk:true 鎖定（學生與老師都不能誤拖）。',
+    '【物件通用欄位】id（全專案不重複）、k（種類）、by 固定寫 "T"、x、y、w、h（位置與大小）、r（旋轉角度，通常 0）、fx（左右翻轉，通常 false）。可選 lk:true 鎖定（學生與老師都不能誤拖）；可選 hd:true 先隱藏（學生看不到，老師按揭曉才會出現，適合放答案）。',
     '',
     '【物件種類 k】',
     '1. 文字 k:"t"：txt（文字，\\n 換行）、v（true 為直式文字）、fs（字級，18～120，標題 56～80、內文 32～44）、c（文字顏色，如 "#111111"）。可選 bd（外框顏色）與 bw（外框粗細）。w、h 要夠大：高度約 ≥ 字級 ×1.4 ×行數。',
@@ -1481,7 +1647,7 @@
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
     '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、背景（空白／格點／格線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、背景（空白／格點／格線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +

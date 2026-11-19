@@ -91,6 +91,7 @@
         if (!joined) { joined = true; clearTimeout(joinT); me.b = connect.b; saveMe(); boardScreen(); }
         V.load(d.bid, d.objs || []); setMeta(d); needImgs(d.objs || []); break;
       case 'meta': setMeta(d); break;
+      case 'cd': cdSet(d); break;
       case 'op': if (V && d.from !== me.sid) { V.apply(d.bid, d.op); needImgs(d.op.add || []); } break;
       case 'vid': if (V && d.bid === V.bid && d.id) V.video(d.id, d.cmd, d.at); break;
       case 'img': if (d.id && d.d) { delete asked[d.id]; WB.setImg(d.id, d.d); } break;
@@ -160,6 +161,22 @@
     if (endAt && cur.mode === 'work') { var s = Math.max(0, Math.ceil((endAt - Date.now()) / 1000)); c.hidden = false; c.textContent = '⏱ ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); c.classList.toggle('hurry', s <= 30); }
     else c.hidden = true;
   }
+  /* 老師的倒數計時器 */
+  var cdS = null, cdEl = null, cdFired = false;
+  function cdSet(d) {
+    cdFired = false;
+    if (d.off) { cdS = null; } else { cdS = { total: d.total, paused: !!d.paused, left: d.left, end: Date.now() + d.left }; }
+    cdTick();
+  }
+  function cdTick() {
+    if (!cdS) { if (cdEl) { cdEl.parentNode.removeChild(cdEl); cdEl = null; } return; }
+    if (!cdEl) { cdEl = document.createElement('div'); cdEl.className = 'cd-stu'; document.body.appendChild(cdEl); }
+    var l = cdS.paused ? cdS.left : Math.max(0, cdS.end - Date.now()), s = Math.ceil(l / 1000);
+    cdEl.textContent = l <= 0 ? '⏰ 時間到！' : '⏱ ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2) + (cdS.paused ? '（暫停）' : '');
+    cdEl.classList.toggle('hurry', l > 0 && l <= 10000); cdEl.classList.toggle('done', l <= 0);
+    if (l <= 0 && !cdFired && !cdS.paused) { cdFired = true; try { var AC = window.AudioContext || window.webkitAudioContext, c = new AC(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.2, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.8); o.start(); o.stop(c.currentTime + 0.85); } catch (e) {} }
+  }
+  setInterval(cdTick, 250);
   setInterval(tick, 500);
   function setTool(m) { tool.mode = m; V.setTool(tool); renderTools(); }
   function renderTools() {
