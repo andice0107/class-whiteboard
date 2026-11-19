@@ -586,3 +586,12 @@ body.host.dark .pg-nav .pn-in{background:#1f2433;color:var(--ink);border-color:#
 
 /* 影片：老師沒開放時，學生只看到封面 */
 .wb-vcover{position:absolute;left:0;top:0;right:0;bottom:0;background:#000 center/cover no-repeat;display:flex;align-items:flex-end;justify-content:center;color:#fff;font-weight:800;font-size:18px;pointer-events:auto;text-shadow:0 1px 4px #000}
+
+body.student .wb-v.sp iframe{pointer-events:auto!important}
+/* 學生離開畫布提醒（老師端） */
+.away-box{position:fixed;top:58px;right:12px;z-index:60;display:flex;flex-direction:column;gap:6px;max-width:360px}
+.away-it{display:flex;align-items:center;gap:8px;background:#fff3bf;border:2px solid #f59f00;border-radius:12px;padding:6px 10px;font-weight:800;color:#7a4b00;box-shadow:0 4px 16px #0004}
+.away-it .grow{flex:1}
+.stu .away-tag{background:#fff3bf;color:#7a4b00;border-radius:8px;padding:0 6px;font-size:13px;font-weight:800}
+/* 學生端：老師叫回畫布 */
+.nudge{position:fixed;left:0;right:0;top:0;z-index:999;background:#f03e3e;color:#fff;font-size:26px;font-weight:800;text-align:center;padding:18px 12px;box-shadow:0 6px 24px #0006}

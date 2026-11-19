@@ -317,7 +317,7 @@ window.WB = (function () {
         e.classList.toggle('lk', !!o.lk);
         e.classList.toggle('hd', !!o.hd && !!opt.showHidden); e.style.display = (o.hd && !opt.showHidden) ? 'none' : '';
         if (o.k === 'i') { var im = e.firstChild, src = imgs[o.src] || ''; if (im.getAttribute('src') !== src) { if (src) im.src = src; else im.removeAttribute('src'); } e.classList.toggle('loading', !src); }
-        else if (o.k === 'v') { var vc = e.querySelector('.wb-vcover'); if (vc) vc.style.display = (opt.lockVideos && !o.sp && !e._tplay) ? '' : 'none'; /* iframe 不重建，避免影片重新載入 */ }
+        else if (o.k === 'v') { e.classList.toggle('sp', !!o.sp); var vc = e.querySelector('.wb-vcover'); if (vc) vc.style.display = (opt.lockVideos && !o.sp && !e._tplay) ? '' : 'none'; /* iframe 不重建，避免影片重新載入 */ }
         else {
           if (o.k === 'g') { var sv = shapeSvg(o); if (e.firstChild._h !== sv) { e.firstChild.innerHTML = sv; e.firstChild._h = sv; } }
           var t = o.k === 'g' ? e.lastChild : e.firstChild; t.style.fontSize = (o.fs || (o.k === 'n' ? 28 : o.k === 'g' ? 32 : 36)) + 'px';

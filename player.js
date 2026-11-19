@@ -92,6 +92,7 @@
         V.load(d.bid, d.objs || []); setMeta(d); needImgs(d.objs || []); break;
       case 'meta': setMeta(d); break;
       case 'cd': cdSet(d); break;
+      case 'nudge': nudge(); break;
       case 'poll': pollSet(d); break;
       case 'op': if (V && d.from !== me.sid) { V.apply(d.bid, d.op); needImgs(d.op.add || []); } break;
       case 'vid': if (V && d.bid === V.bid && d.id) V.video(d.id, d.cmd, d.at); break;
@@ -192,6 +193,19 @@
   }
   /* 老師的倒數計時器 */
   var cdS = null, cdEl = null, cdFired = false;
+  /* 離開畫布提醒：切到別的分頁／app、鎖螢幕時通知老師；老師可以叫我回來 */
+  document.addEventListener('visibilitychange', function () { if (joined) send({ t: 'away', a: document.hidden ? 1 : 0 }); });
+  window.addEventListener('pagehide', function () { if (joined) send({ t: 'away', a: 1 }); });
+  var nudgeEl = null;
+  function nudge() {
+    if (nudgeEl) nudgeEl.remove();
+    nudgeEl = document.createElement('div'); nudgeEl.className = 'nudge'; nudgeEl.textContent = '👆 老師請你回到畫布，專心上課！（點一下關掉）';
+    nudgeEl.onclick = function () { nudgeEl.remove(); nudgeEl = null; };
+    document.body.appendChild(nudgeEl);
+    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+    try { var AC = window.AudioContext || window.webkitAudioContext, c = new AC(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.25, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.6); o.start(); o.stop(c.currentTime + 0.65); } catch (e) {}
+    setTimeout(function () { if (nudgeEl) { nudgeEl.remove(); nudgeEl = null; } }, 15000);
+  }
   function cdSet(d) {
     cdFired = false;
     if (d.off) { cdS = null; } else { cdS = { total: d.total, paused: !!d.paused, left: d.left, end: Date.now() + d.left }; }
