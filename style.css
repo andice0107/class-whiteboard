@@ -383,3 +383,9 @@ body.swap .host-main .work{flex-direction:row-reverse}
 .host .help-b{font-size:20px;padding:4px 8px}
 @media (max-width:1300px){.host .bar .ctx-bar:not(.collab){display:none}}
 @media (max-width:1120px){.host .bar{gap:5px;padding:5px 6px}.host .bar .btn{padding:6px 6px;font-size:14px}.host .seg button{padding:6px 7px;font-size:14px}.host .code-pill{font-size:14px;padding:4px 8px}.host .brand{font-size:15px}}
+.pop.act-pop{padding:6px}
+.act-row{display:flex;gap:8px}
+.act-b{font-size:17px;padding:10px 14px;min-width:96px}
+.host .toolbar .tb.dim{opacity:.6}
+.wb-stage.pan-ready,.wb-stage.pan-ready *{cursor:grab!important}
+.wb-stage.panning,.wb-stage.panning *{cursor:grabbing!important}

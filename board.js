@@ -575,6 +575,48 @@ window.WB = (function () {
       } else return;
       opt.onViewport && opt.onViewport(V.vp);
     }, { passive: false });
+    /* 局部放大時移動畫布：按住「移動鍵」＋滑鼠拖曳（滑鼠中鍵也行）；觸控用兩指拖曳 */
+    var panHeld = false, pan = null, touches = {};
+    function typing(e) { return /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable; }
+    function isPanKey(e) { var k = V.panKey || 'space'; return k === 'space' ? e.code === 'Space' : k === 'alt' ? e.key === 'Alt' : (e.key || '').toLowerCase() === 'x'; }
+    function setPanHeld(b) { panHeld = b; stage.classList.toggle('pan-ready', b && V.vp.z > 1.001); }
+    function stopPan() { pan = null; stage.classList.remove('panning'); }
+    if (opt.wheelZoom) {
+      window.addEventListener('keydown', function (e) { if (!typing(e) && isPanKey(e) && !e.ctrlKey && !e.metaKey) { if (V.vp.z > 1.001 && e.code === 'Space') e.preventDefault(); setPanHeld(true); } });
+      window.addEventListener('keyup', function (e) { if (isPanKey(e)) setPanHeld(false); });
+      window.addEventListener('blur', function () { setPanHeld(false); stopPan(); });
+      stage.addEventListener('pointerdown', function (e) {
+        if (V.vp.z <= 1.001) return;
+        if (e.pointerType === 'touch') {
+          touches[e.pointerId] = [e.clientX, e.clientY];
+          var ids = Object.keys(touches);
+          if (ids.length >= 2) {
+            /* 第二根手指放下：放掉手上正在畫的，改成移動畫布 */
+            mine = null; erasing = null; shaping = null; zooming = null; lasso = null; gdrag = null; pid = null; dirty = true;
+            e.stopPropagation(); e.preventDefault();
+            var a = touches[ids[0]], b = touches[ids[1]];
+            pan = { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, vx: V.vp.x, vy: V.vp.y, touch: true };
+            stage.classList.add('panning');
+          }
+          return;
+        }
+        if ((panHeld && e.button === 0) || e.button === 1) {
+          e.stopPropagation(); e.preventDefault();
+          pan = { x: e.clientX, y: e.clientY, vx: V.vp.x, vy: V.vp.y };
+          stage.classList.add('panning');
+        }
+      }, true);
+      window.addEventListener('pointermove', function (e) {
+        if (e.pointerType === 'touch' && touches[e.pointerId]) touches[e.pointerId] = [e.clientX, e.clientY];
+        if (!pan) return;
+        var cx = e.clientX, cy = e.clientY;
+        if (pan.touch) { var ks = Object.keys(touches); if (ks.length < 2) return; cx = (touches[ks[0]][0] + touches[ks[1]][0]) / 2; cy = (touches[ks[0]][1] + touches[ks[1]][1]) / 2; }
+        V.setViewport({ z: V.vp.z, x: pan.vx - (cx - pan.x) / S_(), y: pan.vy - (cy - pan.y) / S_() });
+        opt.onViewport && opt.onViewport(V.vp);
+      });
+      function upP(e) { delete touches[e.pointerId]; if (pan && (!pan.touch || Object.keys(touches).length < 2)) stopPan(); }
+      window.addEventListener('pointerup', upP); window.addEventListener('pointercancel', upP);
+    }
     stage.addEventListener('click', function (e) { if (V.tool.mode === 'select' && e.target.closest('a')) e.preventDefault(); });
     V.editText = function (id) {
       if (!els[id]) drawObjs();
@@ -634,10 +676,13 @@ window.WB = (function () {
     });
 
     function pos(e) { var r = top.getBoundingClientRect(), s = S_(); return [Math.round((e.clientX - r.left) / s + V.vp.x), Math.round((e.clientY - r.top) / s + V.vp.y)]; }
+    V.redoH = {};
+    function redoS() { return V.redoH[V.bid] || (V.redoH[V.bid] = []); }
     function hist() { return V.hist[V.bid] || (V.hist[V.bid] = []); }
     function commit(add, rem) {
       if (!add.length && !rem.length) return;
       hist().push({ add: add, rem: rem }); if (hist().length > 80) hist().shift();
+      V.redoH[V.bid] = [];
       opt.onOp && opt.onOp(V.bid, { del: rem.map(function (o) { return o.id; }), add: add });
     }
     var lastLive = 0, pid = null;
@@ -754,10 +799,26 @@ window.WB = (function () {
         if (!del.length && !e.rem.length) continue;
         applyOp(V.objs, { del: del.map(function (o) { return o.id; }), add: e.rem }); dirty = true;
         opt.onOp && opt.onOp(V.bid, { del: del.map(function (o) { return o.id; }), add: e.rem });
+        redoS().push({ add: del, rem: e.rem });
         return true;
       }
       return false;
     };
+    /* 下一步：把剛剛「上一步」復原的動作重做回來 */
+    V.redo = function () {
+      var rs = redoS(), e;
+      while ((e = rs.pop())) {
+        var ids = {}; V.objs.forEach(function (o) { ids[o.id] = 1; });
+        var del = e.rem.filter(function (o) { return ids[o.id]; });
+        if (!del.length && !e.add.length) continue;
+        applyOp(V.objs, { del: del.map(function (o) { return o.id; }), add: e.add }); dirty = true;
+        opt.onOp && opt.onOp(V.bid, { del: del.map(function (o) { return o.id; }), add: e.add });
+        hist().push({ add: e.add, rem: e.rem });
+        return true;
+      }
+      return false;
+    };
+    V.canRedo = function () { return redoS().length > 0; };
     V.canUndo = function () { return hist().length > 0; };
     /* 全消除：老師清全部筆劃；學生只清自己的 */
     V.clear = function (all) {

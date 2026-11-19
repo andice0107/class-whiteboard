@@ -236,6 +236,7 @@
   }
   function zkName(k) { var f = ZKEYS.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
   try { V.zoomKey = localStorage.getItem('wb-zoomkey') || ''; } catch (e) { V.zoomKey = ''; }
+  try { V.panKey = localStorage.getItem('wb-pankey') || 'space'; } catch (e) { V.panKey = 'space'; }
   if (!ZKEYS.some(function (x) { return x[0] === V.zoomKey; })) V.zoomKey = IS_MAC ? 'alt' : 'ctrl';
 
   function curBid() { return tv.kind === 'group' ? 'G:' + tv.gid : 'P:' + S.cur; }
@@ -317,12 +318,31 @@
       toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解除全部鎖定');
     }), '鎖定或解鎖這一頁所有物件（單一物件請按右鍵鎖定）');
     if (tv.kind === 'page') { var zb = add(btn('tb' + (tool.mode === 'zoom' ? ' on' : ''), '🔍<small>放大鏡</small>', function () { setMode('zoom'); zoomPanel($('toolbar').querySelector('[data-zoom]')); }), '快捷鍵：按住 ' + zkName(V.zoomKey) + '＋滑鼠滾輪'); zb.dataset.pop = 1; zb.dataset.zoom = 1; }
-    var u = add(btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); })); u.disabled = !V.canUndo();
+    var ab = add(btn('tb', '🎬<small>動作 ▾</small>', function () { actionPanel(ab); }), '上一步、下一步（滑鼠移上來就會展開；平板按一下）'); ab.dataset.pop = 1; ab.dataset.act = 1;
+    ab.disabled = false; ab.classList.toggle('dim', !V.canUndo() && !V.canRedo());
+    if (CAN_HOVER) { ab.onmouseenter = function () { actionPanel(ab, true); }; ab.onmouseleave = function () { actionLeave(); }; }
     add(btn('tb danger', '🗑️<small>全清除</small>', function () {
       if (!V.objs.length) return toast('這一頁已經是空白的');
       confirmBox('要把這一頁全部清空嗎？（筆劃、圖片、文字、圖形、便利貼、影片都會清掉；按「上一步」可以復原）', '全部清除', function () { V.clearAll(); renderTools(); });
     }));
   }
+  var CAN_HOVER = !!(window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)').matches);
+  var actT = null;
+  function actionLeave() { clearTimeout(actT); actT = setTimeout(function () { if (pop && pop.classList.contains('act-pop')) closePop(); }, 350); }
+  function actionPanel(anchor, hover) {
+    clearTimeout(actT);
+    if (hover && pop && pop.classList.contains('act-pop')) return;
+    openPop(anchor, function (p) {
+      p.classList.add('act-pop');
+      var r = el('div', 'act-row');
+      var u = btn('btn act-b', '↩️ 上一步', function () { V.undo(); renderTools(); actionPanel(ab_()); });
+      var d = btn('btn act-b', '↪️ 下一步', function () { V.redo(); renderTools(); actionPanel(ab_()); });
+      u.disabled = !V.canUndo(); d.disabled = !V.canRedo();
+      r.appendChild(u); r.appendChild(d); p.appendChild(r);
+      if (CAN_HOVER) { p.onmouseenter = function () { clearTimeout(actT); }; p.onmouseleave = actionLeave; }
+    });
+  }
+  function ab_() { return $('toolbar').querySelector('[data-act]'); }
   function penPanel(anchor) {
     openPop(anchor, function (p) {
       p.appendChild(el('div', 'pop-h', '✏️ 選筆'));
@@ -408,6 +428,10 @@
       function badge(k) { var st = ZK_TEST[k], c = APP_USED[k]; return st === 'ok' ? '<i class="zk ok">✅ 可用</i>' : st === 'bad' ? '<i class="zk bad">⛔ 被佔用</i>' : c ? '<i class="zk warn">⚠️ ' + c + '</i>' : '<i class="zk">未測試</i>'; }
       ZKEYS.forEach(function (k) { bt[k[0]] = r.appendChild(btn('btn sm zk-b' + (V.zoomKey === k[0] ? ' primary' : ''), k[1] + badge(k[0]), function () { V.zoomKey = k[0]; try { localStorage.setItem('wb-zoomkey', k[0]); } catch (e) {} toast('🔍 快捷鍵改成：按住 ' + k[1] + '＋滑鼠滾輪' + (ZK_TEST[k[0]] === 'bad' ? '（這個鍵剛剛測出來被佔用了）' : '')); renderTools(); zoomPanel($('toolbar').querySelector('[data-zoom]')); })); });
       p.appendChild(r);
+      p.appendChild(el('div', 'pop-l tag t3', '✋ 放大後移動畫布：按住這個鍵＋拖曳畫布（平板用兩根手指拖）'));
+      var pr = el('div', 'pop-row');
+      [['space', '空白鍵'], ['alt', IS_MAC ? 'Option' : 'Alt'], ['x', 'X 鍵']].forEach(function (k) { pr.appendChild(btn('btn sm' + ((V.panKey || 'space') === k[0] ? ' primary' : ''), k[1], function () { V.panKey = k[0]; try { localStorage.setItem('wb-pankey', k[0]); } catch (e) {} toast('✋ 移動畫布的鍵：' + k[1]); zoomPanel(anchor); })); });
+      p.appendChild(pr);
       /* 自動偵測：按住某個鍵在測試框轉滾輪，網頁收得到就是可用；按住了卻收不到滾輪，就是被系統或其他程式佔用 */
       var pad = el('div', 'zk-pad', '🧪 <b>自動偵測</b>：把滑鼠移到這個框裡，按住上面任一個鍵，轉一下滾輪再放開。<br>網頁收得到就標「✅ 可用」；收不到（被 Mac／Windows 或其他程式拿走）就標「⛔ 被佔用」。');
       var held = null, got = false, heldAt = 0;
@@ -554,7 +578,8 @@
   }
   document.addEventListener('keydown', function (e) {
     var ed = document.activeElement && (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !ed) { e.preventDefault(); V.undo(); renderTools(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y' || ((e.key === 'z' || e.key === 'Z') && e.shiftKey)) && !ed) { e.preventDefault(); V.redo(); renderTools(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !ed) { e.preventDefault(); V.undo(); renderTools(); }
     else if ((e.key === 'Delete' || e.key === 'Backspace') && !ed && (V.sel || V.multi)) { e.preventDefault(); if (V.multi) { closePop(); V.groupOp('del'); renderTools(); return; } var so = V.find(V.sel); if (so && so.lk) return toast('🔒 這個物件鎖定了，要先解除鎖定'); closePop(); V.deleteSel(); renderTools(); }
     else if (e.key === 'Escape') { closePop(); if (document.fullscreenElement && S.mode === 'show') {} }
     else if (S.mode === 'show' && !ed && $('modal').hidden && /^(ArrowRight|ArrowDown|PageDown| )$/.test(e.key)) { e.preventDefault(); flip(1); }
@@ -1456,7 +1481,7 @@
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
     '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、背景（空白／格點／格線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。</li><li><b>上一步</b>：復原。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、背景（空白／格點／格線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
