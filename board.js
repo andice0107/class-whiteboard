@@ -300,7 +300,10 @@ window.WB = (function () {
             var fr = document.createElement('iframe'); fr.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen'; fr.allowFullscreen = true;
             fr.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(o.yt) + '?enablejsapi=1&playsinline=1&rel=0&modestbranding=1' + (o.st ? '&start=' + o.st : '') + '&origin=' + encodeURIComponent(location.origin);
             fr.onload = function () { try { fr.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: o.id, channel: 'widget' }), '*'); } catch (x) {} };
-            e.appendChild(fr); e.appendChild(document.createElement('div')).className = 'wb-vbar';
+            e.appendChild(fr);
+            var cv = document.createElement('div'); cv.className = 'wb-vcover'; cv.style.backgroundImage = 'url(https://i.ytimg.com/vi/' + encodeURIComponent(o.yt) + '/hqdefault.jpg)';
+            cv.textContent = '🔒 老師還沒開放播放'; e.appendChild(cv);
+            e.appendChild(document.createElement('div')).className = 'wb-vbar';
             e.lastChild.textContent = '🖐️ 拖這條移動影片';
           }
           else e.appendChild(document.createElement('div')).className = 'wb-txt';
@@ -314,7 +317,7 @@ window.WB = (function () {
         e.classList.toggle('lk', !!o.lk);
         e.classList.toggle('hd', !!o.hd && !!opt.showHidden); e.style.display = (o.hd && !opt.showHidden) ? 'none' : '';
         if (o.k === 'i') { var im = e.firstChild, src = imgs[o.src] || ''; if (im.getAttribute('src') !== src) { if (src) im.src = src; else im.removeAttribute('src'); } e.classList.toggle('loading', !src); }
-        else if (o.k === 'v') { /* iframe 不重建，避免影片重新載入 */ }
+        else if (o.k === 'v') { var vc = e.querySelector('.wb-vcover'); if (vc) vc.style.display = (opt.lockVideos && !o.sp && !e._tplay) ? '' : 'none'; /* iframe 不重建，避免影片重新載入 */ }
         else {
           if (o.k === 'g') { var sv = shapeSvg(o); if (e.firstChild._h !== sv) { e.firstChild.innerHTML = sv; e.firstChild._h = sv; } }
           var t = o.k === 'g' ? e.lastChild : e.firstChild; t.style.fontSize = (o.fs || (o.k === 'n' ? 28 : o.k === 'g' ? 32 : 36)) + 'px';
@@ -723,6 +726,7 @@ window.WB = (function () {
     function frameOf(id) { var e = els[id]; return e && e.querySelector('iframe'); }
     var vpend = {}, vready = {};
     V.video = function (id, cmd, at) {
+      if (cmd === 'play' && els[id] && !els[id]._tplay) { els[id]._tplay = true; dirty = true; }
       var f = frameOf(id);
       if (!f || !vready[id]) { vpend[id] = { cmd: cmd, at: at, ts: Date.now() }; if (!f) dirty = true; return; }
       function post(func, args) { try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*'); } catch (x) {} }
