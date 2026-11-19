@@ -92,6 +92,7 @@
         V.load(d.bid, d.objs || []); setMeta(d); needImgs(d.objs || []); break;
       case 'meta': setMeta(d); break;
       case 'cd': cdSet(d); break;
+      case 'poll': pollSet(d); break;
       case 'op': if (V && d.from !== me.sid) { V.apply(d.bid, d.op); needImgs(d.op.add || []); } break;
       case 'vid': if (V && d.bid === V.bid && d.id) V.video(d.id, d.cmd, d.at); break;
       case 'img': if (d.id && d.d) { delete asked[d.id]; WB.setImg(d.id, d.d); } break;
@@ -160,6 +161,33 @@
     var c = document.querySelector('.stu-clock'); if (!c) return;
     if (endAt && cur.mode === 'work') { var s = Math.max(0, Math.ceil((endAt - Date.now()) / 1000)); c.hidden = false; c.textContent = '⏱ ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); c.classList.toggle('hurry', s <= 30); }
     else c.hidden = true;
+  }
+  /* 老師的投票／選擇題 */
+  var poll = null, pollEl = null, myVote = {}, pollMin = false;
+  function pollSet(d) {
+    if (d.off) { poll = null; } else { if (!poll || poll.id !== d.id) pollMin = false; poll = d; }
+    pollDraw();
+  }
+  function pollDraw() {
+    if (!poll) { if (pollEl) { pollEl.parentNode.removeChild(pollEl); pollEl = null; } return; }
+    if (!pollEl) { pollEl = document.createElement('div'); pollEl.className = 'poll-stu'; document.body.appendChild(pollEl); }
+    var LT = 'ABCDEF', mine = myVote[poll.id], h = '<div class="ps-top"><b>📊 ' + (poll.q ? poll.q.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }) : '請作答') + '</b><button class="ps-min" data-a="m">' + (pollMin ? '⌃ 展開' : '⌄ 收起') + '</button></div>';
+    if (!pollMin) {
+      h += '<div class="ps-opts">';
+      poll.opts.forEach(function (t, i) {
+        var res = poll.res, extra = '';
+        if (res) extra = '<span class="ps-n">' + res.counts[i] + ' 人' + (res.ans === i ? '・✓ 正確答案' : '') + '</span>';
+        h += '<button class="ps-o' + (mine === i ? ' on' : '') + (res && res.ans === i ? ' ok' : '') + '" data-i="' + i + '"' + (poll.open ? '' : ' disabled') + '><b>' + (poll.opts.length === 2 && /[⭕❌]/.test(t) ? '' : LT[i] + '.') + '</b> ' + (t.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; })) + extra + '</button>';
+      });
+      h += '</div><div class="ps-m">' + (!poll.open ? '⏹ 作答已結束' + (mine != null ? '・你選了 ' + (poll.opts.length === 2 && /[⭕❌]/.test(poll.opts[mine]) ? poll.opts[mine] : LT[mine]) : '') : mine != null ? '✅ 已送出，可以改選別的' : '點一個答案送出') + '</div>';
+    }
+    pollEl.innerHTML = h;
+    pollEl.onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.a === 'm') { pollMin = !pollMin; pollDraw(); return; }
+      if (b.dataset.i == null || !poll || !poll.open) return;
+      var i = +b.dataset.i; myVote[poll.id] = i; send({ t: 'vote', pid: poll.id, o: i }); pollDraw();
+    };
   }
   /* 老師的倒數計時器 */
   var cdS = null, cdEl = null, cdFired = false;
