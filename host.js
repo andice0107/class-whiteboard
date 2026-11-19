@@ -772,6 +772,21 @@
         rl.appendChild(btn('btn sm', '濃一點', function () { chg({ op: Math.min(1, +((o.op == null ? 1 : o.op) + 0.15).toFixed(2)) }); }));
         if (o.txt) { m.appendChild(el('div', 'pop-l', '圖形裡的文字顏色')); m.appendChild(swatches(COLORS.slice(0, 7), o.tc || '#111111', function (c) { chg({ tc: c }); }, 'mini')); }
       }
+      if (o.k === 'i') {
+        m.appendChild(el('div', 'pop-l', '圖片編輯'));
+        var ie = row(), fl0 = o.fl || {}, hasCr = o.cr && (o.cr[0] || o.cr[1] || o.cr[2] || o.cr[3]);
+        ie.appendChild(btn('btn sm primary', '✂️ 裁切', function () { closePop(); cropModal(o); }));
+        ie.appendChild(btn('btn sm' + (fl0.g ? ' primary' : ''), '⚫ 黑白', function () { chg({ fl: Object.assign({}, fl0, { g: !fl0.g }) }); }));
+        var ib1 = row(), cb = fl0.b == null ? 100 : fl0.b, cc = fl0.c == null ? 100 : fl0.c;
+        ib1.appendChild(el('span', '', '亮度 ' + cb + '%'));
+        ib1.appendChild(btn('btn sm', '－', function () { chg({ fl: Object.assign({}, fl0, { b: Math.max(30, cb - 10) }) }); }));
+        ib1.appendChild(btn('btn sm', '＋', function () { chg({ fl: Object.assign({}, fl0, { b: Math.min(200, cb + 10) }) }); }));
+        var ib2 = row();
+        ib2.appendChild(el('span', '', '對比 ' + cc + '%'));
+        ib2.appendChild(btn('btn sm', '－', function () { chg({ fl: Object.assign({}, fl0, { c: Math.max(30, cc - 10) }) }); }));
+        ib2.appendChild(btn('btn sm', '＋', function () { chg({ fl: Object.assign({}, fl0, { c: Math.min(250, cc + 10) }) }); }));
+        if (hasCr || o.fl) m.appendChild(btn('mi', '↩️ 恢復原圖（取消裁切和色彩調整）', function () { restoreImg(o); again(); }));
+      }
       var ra = row(); ra.appendChild(el('span', 'pop-l', '旋轉'));
       var ai = el('input', 'num'); ai.type = 'number'; ai.min = 0; ai.max = 360; ai.value = o.r || 0;
       ai.onchange = function () { var v = Math.round(+ai.value) || 0; v = +ai.value === 360 ? 360 : ((v % 360) + 360) % 360; chg({ r: v }); };
@@ -786,6 +801,69 @@
       rz.appendChild(btn('btn sm danger', '🗑 刪除', function () { closePop(); V.deleteSel(); renderTools(); }));
     });
     p._obj = o.id;
+  }
+  /* ---------- 圖片裁切 ---------- */
+  function cropFrame(o, cr) {
+    var c0 = o.cr || [0, 0, 0, 0], fw = o.w / (1 - c0[0] - c0[2]), fh = o.h / (1 - c0[1] - c0[3]);
+    var w = fw * (1 - cr[0] - cr[2]), h = fh * (1 - cr[1] - cr[3]);
+    var dx = (cr[0] - c0[0]) * fw + w / 2 - o.w / 2, dy = (cr[1] - c0[1]) * fh + h / 2 - o.h / 2;
+    if (o.fx) dx = -dx;
+    var a = (o.r || 0) * Math.PI / 180, cx = o.x + o.w / 2 + dx * Math.cos(a) - dy * Math.sin(a), cy = o.y + o.h / 2 + dx * Math.sin(a) + dy * Math.cos(a);
+    return { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w: Math.round(w), h: Math.round(h) };
+  }
+  function restoreImg(o) { var f = cropFrame(o, [0, 0, 0, 0]); if (V.sel !== o.id) V.select(o.id); V.change({ x: f.x, y: f.y, w: f.w, h: f.h, cr: null, fl: null }); }
+  function cropModal(o) {
+    var src = WB.imgs[o.src]; if (!src) return toast('圖片還沒載入好，請稍等一下');
+    modal(function (box) {
+      box.appendChild(el('h3', '', '✂️ 裁切圖片'));
+      box.appendChild(el('p', 'hint', '拖白框裡面可以移動，拖四個角的圓點調整大小。框外的部分會被裁掉（之後可以用「恢復原圖」找回來）。'));
+      var wrap = el('div', 'crop-wrap'), im = new Image(); wrap.appendChild(im);
+      var sh = [0, 1, 2, 3].map(function () { var d = el('div', 'crop-sh'); wrap.appendChild(d); return d; });
+      var bx = el('div', 'crop-box'); wrap.appendChild(bx);
+      var hs = ['nw', 'ne', 'sw', 'se'].map(function (k) { var d = el('div', 'crop-h'); d.dataset.k = k; wrap.appendChild(d); return d; });
+      var c = (o.cr || [0, 0, 0, 0]).slice(), W = 1, H = 1, MIN = 0.06;
+      function draw() {
+        var l = c[0] * W, t = c[1] * H, r = W - c[2] * W, b = H - c[3] * H;
+        bx.style.cssText = 'left:' + l + 'px;top:' + t + 'px;width:' + (r - l) + 'px;height:' + (b - t) + 'px';
+        function pos(d, x, y, w, h) { d.style.left = x + 'px'; d.style.top = y + 'px'; d.style.width = w + 'px'; d.style.height = h + 'px'; }
+        pos(sh[0], 0, 0, W, t); pos(sh[1], 0, b, W, H - b); pos(sh[2], 0, t, l, b - t); pos(sh[3], r, t, W - r, b - t);
+        hs.forEach(function (d) { var k = d.dataset.k; d.style.left = ((k[1] === 'w' ? l : r) - 13) + 'px'; d.style.top = ((k[0] === 'n' ? t : b) - 13) + 'px'; });
+      }
+      function drag(el0, fn) {
+        el0.addEventListener('pointerdown', function (e) {
+          e.preventDefault(); e.stopPropagation(); el0.setPointerCapture(e.pointerId);
+          var sx = e.clientX, sy = e.clientY, c0 = c.slice();
+          function mv(ev) { fn((ev.clientX - sx) / W, (ev.clientY - sy) / H, c0); draw(); }
+          function up() { el0.removeEventListener('pointermove', mv); el0.removeEventListener('pointerup', up); el0.removeEventListener('pointercancel', up); }
+          el0.addEventListener('pointermove', mv); el0.addEventListener('pointerup', up); el0.addEventListener('pointercancel', up);
+        });
+      }
+      var cl = function (v, a, z) { return Math.max(a, Math.min(z, v)); };
+      drag(bx, function (dx, dy, c0) {
+        var w = 1 - c0[0] - c0[2], h = 1 - c0[1] - c0[3], l = cl(c0[0] + dx, 0, 1 - w), t = cl(c0[1] + dy, 0, 1 - h);
+        c = [l, t, 1 - w - l, 1 - h - t];
+      });
+      hs.forEach(function (d) {
+        var k = d.dataset.k;
+        drag(d, function (dx, dy, c0) {
+          c = c0.slice();
+          if (k[1] === 'w') c[0] = cl(c0[0] + dx, 0, 1 - c0[2] - MIN); else c[2] = cl(c0[2] - dx, 0, 1 - c0[0] - MIN);
+          if (k[0] === 'n') c[1] = cl(c0[1] + dy, 0, 1 - c0[3] - MIN); else c[3] = cl(c0[3] - dy, 0, 1 - c0[1] - MIN);
+        });
+      });
+      im.onload = function () { W = im.clientWidth; H = im.clientHeight; draw(); };
+      im.src = src; box.appendChild(wrap);
+      var rowb = el('div', 'modal-btns');
+      rowb.appendChild(btn('btn', '取消', closeModal));
+      rowb.appendChild(btn('btn', '全選（不裁）', function () { c = [0, 0, 0, 0]; draw(); }));
+      rowb.appendChild(btn('btn primary', '✅ 完成裁切', function () {
+        closeModal();
+        var f = cropFrame(o, c), none = !(c[0] || c[1] || c[2] || c[3]);
+        if (V.sel !== o.id) V.select(o.id);
+        V.change({ x: f.x, y: f.y, w: f.w, h: f.h, cr: none ? null : c.map(function (v) { return +v.toFixed(4); }) }); renderTools();
+      }));
+      box.appendChild(rowb);
+    });
   }
   document.addEventListener('keydown', function (e) {
     var ed = document.activeElement && (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
@@ -2495,6 +2573,7 @@
     '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><p>筆、橡皮擦、圖形、插入、課堂、動作：電腦上滑鼠移上去就會浮出選單，平板和手機按一下展開。頁面欄收起來時，滑鼠碰到左邊的「頁面」小標籤會暫時浮出（不會改變畫板大小），滑鼠離開 3 秒後自動收回；按 📌 可固定打開。</p><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>：展開後可選大小，裡面也有<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>簡報模式的翻頁列</b>也是同樣的小橫槓，碰到或點一下才彈出。</li><li><b>影片（YouTube）給學生</b>：預設學生只看到影片的封面圖，不能自己點播放；選取影片後在物件選單按「學生可以自己點開播放」就開放。<b>重要：</b>要控制學生在自己作業畫布上的影片能不能播放，請在<b>指派作業之前</b>就在自己的頁面設定好（指派時會連同設定複製給各組）；作業已經開始之後，每組有自己的一份畫板，要用「與該組共做」進入那位學生（那一組）的畫面，再在他的影片上開或關。在自己的老師畫布上開關，也會同步到已指派出去、同一頁上同一部影片的各組畫板；如果沒有反應，就進共做畫面直接改那一組。注意：同一頁第一次指派時才會複製頁面，之後才加進老師那頁的影片不會自動出現在已指派的組別畫板上。你自己按播放時，學生畫面都會跟著播放（不受這個開關影響）。</li><li><b>雲端存專案</b>：「💾 專案」→「我的專案」用 Google 登入後，專案和工具欄順序會存進<b>你自己 Google 雲端硬碟裡這個工具專用的隱藏資料夾</b>（不會出現在你的檔案清單，不佔用別人的空間）。登入連線大約每小時過期，過期時按「重新連線 Google 雲端」即可。</li><li><b>指派多頁</b>：各組的小方塊下方有「◀ 第 N 頁 ▶」，可以單獨讓那一組換頁或直接指定第幾頁。 在「📋 任務」勾選多頁時，下方可選兩種方式。<b>輪流分給各組</b>：每組只拿一頁（第 1 組第一頁、第 2 組第二頁…），適合各組做不同題目。<b>每組都拿到全部勾選頁</b>：每組都有這幾頁，可以勾選「學生可以自己換頁」讓學生用畫面下方的 ‹ › 自己換；不勾的話只有老師能換，用任務列的「◀ 上一頁／下一頁 ▶」一鍵讓（勾選的或全部的）組別一起換頁。各頁上寫的內容都會保留。</li><li><b>學生離開畫布提醒</b>：學生切到別的分頁或 app、鎖螢幕時，右上角會跳出「⚠ 學號 ○○ 離開畫布了」，學生名單也會標示；按「🔔 叫他回來」，學生回來時畫面上方會出現紅色提醒，並響鈴、震動約 3 秒；紅色文字會一直留著，直到學生自己點掉。注意：電腦上若是把別的視窗並排開著、畫布仍在畫面上，工具偵測不到。</li><li><b>快速選頁</b>：畫板最下方有一條微透明的小橫槓，滑鼠碰到或手指點一下就會彈出（離開 2 秒自動收摺，也可按 ⌄ 收起）；頁面欄標題的 🔲 可以看全部頁面的縮圖，點一張就跳過去；在裡面可以勾選多頁一起刪除，或按住 ⠿ 拖曳來移動頁面順序（選了多頁就一起移）。展開後有「‹ 頁碼 / 總頁數 ›」和「＋」：左右鍵翻頁、點頁碼輸入數字按 Enter 直接跳頁、「＋」在目前這頁後面立刻加一張空白頁。</li><li><b>結束課程</b>：在上方「🚪 教室入口」的視窗裡。</li><li><b>全選</b>：按 Ctrl+A（Mac 按 ⌘+A）可以選取這一頁所有物件，再用「⋯」選單一起鎖定、複製、刪除。</li><li><b>畫布物件</b>：展開後有<b>全部鎖定</b>（鎖住後不會誤拖物件；用全選後的「⋯」鎖定也算全部鎖定。全部鎖定時按鈕和畫布左上角都會出現 🔒 提示）和<b>圖層</b>（選一個物件後按置頂、上移、下移、置底，或開圖層面板）；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單，要按「編輯抽籤項目」才會顯示輸入框，避免學生盯著看）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示；計時器可拖動、拖右下角縮放，有「＋5～＋30 秒」按鈕，時間到連續響約 6 秒）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布；也能<b>下載「題目範本」</b>用 Excel 編好一次上傳很多題，清單只顯示題號和題目，點「出這題」就送出，還可指定只出給某幾組或某幾位學生）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
+    '<h4>🖼️ 編輯圖片</h4><p>在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－，還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
   $('b-help').onclick = function () { helpModal('u'); };

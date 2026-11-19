@@ -604,3 +604,10 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 
 .tile-pgc{display:inline-flex;align-items:center;gap:4px}
 .tile-pgc select{max-width:92px}
+
+.wb-i{overflow:hidden}
+.crop-wrap{position:relative;display:inline-block;max-width:100%;touch-action:none;user-select:none;line-height:0}
+.crop-wrap img{max-width:min(86vw,760px);max-height:56vh;display:block;pointer-events:none;-webkit-user-drag:none}
+.crop-sh{position:absolute;background:#0007;pointer-events:none}
+.crop-box{position:absolute;border:2px solid #fff;box-shadow:0 0 0 1px #2b6cff;cursor:move;touch-action:none}
+.crop-h{position:absolute;width:26px;height:26px;background:#2b6cff;border:2px solid #fff;border-radius:50%;touch-action:none}
