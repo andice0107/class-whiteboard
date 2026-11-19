@@ -611,3 +611,6 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .crop-sh{position:absolute;background:#0007;pointer-events:none}
 .crop-box{position:absolute;border:2px solid #fff;box-shadow:0 0 0 1px #2b6cff;cursor:move;touch-action:none}
 .crop-h{position:absolute;width:26px;height:26px;background:#2b6cff;border:2px solid #fff;border-radius:50%;touch-action:none}
+.wb-ibd{position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;pointer-events:none}
+.bg-prev{background:repeating-conic-gradient(#ddd 0 25%,#fff 0 50%) 0 0/16px 16px;display:inline-block;line-height:0;border:1px solid #ccc}
+.bg-prev canvas{max-width:min(80vw,640px);max-height:46vh;display:block}
