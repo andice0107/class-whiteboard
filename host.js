@@ -32,7 +32,9 @@
       r.onsuccess = function () { idb = r.result; cb(idb); }; r.onerror = function () { cb(null); };
     } catch (e) { cb(null); }
   }
-  function idbPut(store, k, v) { idbOpen(function (db) { if (db) try { db.transaction(store, 'readwrite').objectStore(store).put(v, k); } catch (e) {} }); }
+  var idbWarnAt = 0;
+  function idbFail() { if (Date.now() - idbWarnAt < 120000) return; idbWarnAt = Date.now(); toast('⚠ 這台電腦無法自動儲存目前的畫板（空間不足或瀏覽器限制），請先按「專案」存成專案檔或存到雲端', false, true); }
+  function idbPut(store, k, v) { idbOpen(function (db) { if (!db) return idbFail(); try { var tx = db.transaction(store, 'readwrite'); tx.objectStore(store).put(v, k); tx.onerror = tx.onabort = idbFail; } catch (e) { idbFail(); } }); }
   function idbGet(store, k, cb) { idbOpen(function (db) { if (!db) return cb(null); try { var q = db.transaction(store).objectStore(store).get(k); q.onsuccess = function () { cb(q.result); }; q.onerror = function () { cb(null); }; } catch (e) { cb(null); } }); }
   function idbLoadImgs(cb) {
     idbOpen(function (db) {
@@ -70,31 +72,35 @@
       cloud.set('wb-proj-' + pid + '.json', JSON.parse(str)).then(function () {
         return listPatch(function (l) { l[pid] = { name: nm || '未命名', at: Date.now(), n: n }; });
       }).then(function () { autoLast = str; autoBusy = false; toast('☁️ 已自動存到雲端專案「' + (nm || '未命名') + '」', true); })
-        .catch(function (e) { autoBusy = false; var big = Date.now() - autoMsgAt > 120000; if (big) autoMsgAt = Date.now(); toast('⚠️ 自動存到雲端失敗（' + (e && e.message === 'need-login' ? 'Google 連線過期，請到「💾 專案」重新連線' : '網路問題，之後會再試') + '）', !big); autoCloud(); });
+        .catch(function (e) { autoBusy = false; var big = Date.now() - autoMsgAt > 120000; if (big) autoMsgAt = Date.now(); toast('⚠️ 自動存到雲端失敗（' + (e && e.message === 'need-login' ? 'Google 連線過期，請到「💾 專案」重新連線' : '網路問題，之後會再試') + '）', !big, true); autoCloud(); });
     }, 6000);
   }
 
   /* ---------- 通知記錄（系統／課程）：從這次登入開始記，重新登入就重記 ---------- */
   var NOTES = []; try { NOTES = JSON.parse(sessionStorage.getItem('wb-notes') || '[]') || []; } catch (e) { NOTES = []; }
   var notesT = null;
-  function note(type, msg) {
+  var netT = null, netWarned = false, netWasUp = false;
+  function note(type, msg, flash) {
     var now = Date.now(), last = NOTES[NOTES.length - 1];
     if (last && last.m === msg && last.ty === type && now - last.at < 15000) { last.n = (last.n || 1) + 1; last.at = now; }
     else NOTES.push({ at: now, ty: type, m: msg, n: 1 });
+    if (flash) NOTES[NOTES.length - 1].f = 1;
     if (NOTES.length > 400) NOTES.splice(0, NOTES.length - 400);
     notesDot();
     if (!notesT) notesT = setTimeout(function () { notesT = null; try { sessionStorage.setItem('wb-notes', JSON.stringify(NOTES)); } catch (e) {} }, 1000);
   }
   var notesSeen = 0; try { notesSeen = +sessionStorage.getItem('wb-notes-seen') || 0; } catch (e) {}
   function notesDot() {
-    var b = $('b-proj'); if (!b) return; var un = NOTES.length && NOTES[NOTES.length - 1].at > notesSeen, d = b.querySelector('.note-dot');
+    var b = $('b-proj'); if (!b) return; var un = NOTES.some(function (n) { return n.f && n.at > notesSeen; }), d = b.querySelector('.note-dot');
     if (un && !d) { d = document.createElement('span'); d.className = 'note-dot'; d.title = '有新通知，按「專案」查看'; b.appendChild(d); } else if (!un && d) d.remove();
   }
   function notesSee() { notesSeen = Date.now(); try { sessionStorage.setItem('wb-notes-seen', notesSeen); } catch (e) {} notesDot(); }
   function notesReset() { NOTES = []; try { sessionStorage.removeItem('wb-notes'); } catch (e) {} }
   /* quiet=true：只記錄，不在畫面上跳出來 */
-  function toast(t, quiet) {
-    note(/雲端|專案|存|Google|登入|失敗|連線|網路|⚠️|錯誤|金鑰|下載|連不到/.test(t) ? '系統' : '課程', String(t).replace(/^[☁️💾⚠️✅\s]+/, ''));
+  /* flash：橘點要不要閃。預設只有「系統」且不是 quiet 的才閃；學生狀態另外指定 */
+  function toast(t, quiet, flash) {
+    var sys = /雲端|專案|存|Google|登入|失敗|連線|網路|⚠️|錯誤|金鑰|下載|連不到/.test(t);
+    note(sys ? '系統' : '課程', String(t).replace(/^[^\u4e00-\u9fffA-Za-z0-9「（(]+/, ''), flash != null ? flash : (sys && !quiet));
     if (quiet) return;
     var x = $('toast'); x.textContent = t; x.classList.add('on'); clearTimeout(x._t); x._t = setTimeout(function () { x.classList.remove('on'); }, 2800); }
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
@@ -175,7 +181,7 @@
   var away = {}, awayHide = {};
   function setAway(sid, a) {
     if (!!away[sid] === a) return;
-    if (a) { away[sid] = Date.now(); delete awayHide[sid]; toast('⚠ ' + stuLabel(sid) + ' 離開畫布了'); } else delete away[sid];
+    if (a) { away[sid] = Date.now(); delete awayHide[sid]; toast('⚠ ' + stuLabel(sid) + ' 離開畫布了', false, true); } else { if (away[sid]) toast('✅ ' + stuLabel(sid) + ' 回到畫布了', false, true); delete away[sid]; }
     awayDraw(); renderRoster();
   }
   function awayDraw() {
@@ -207,6 +213,8 @@
     online = {}; lastSent = {};
     net = WBNet.open({ code: S.code, role: 'host', onMessage: onMsg, onStatus: function (s) {
       $('h-net').className = 'dot ' + s;
+      if (s === 'online') { clearTimeout(netT); if (netWarned) { netWarned = false; toast('✅ 教室連線恢復了，學生會自動重新連上', false, true); } netWasUp = true; }
+      else if (netWasUp && !netT && !netWarned) netT = setTimeout(function () { netT = null; netWarned = true; toast('⚠ 教室連線中斷了，學生暫時收不到你的畫面（會自動重連，請檢查網路）', false, true); }, 8000);
       if (s === 'online' && WBNet.LOCAL) net.send({ t: 'hostup' }, '*');
     }, onLine: function () { setTimeout(function () { net.send({ t: 'hostup' }, '*'); }, 300); } });
     $('h-code').textContent = S.code;
@@ -226,10 +234,11 @@
         if (!S.groups[gid]) S.groups[gid] = { name: '', boards: {}, cur: null };
         if (S.assignAll && page(S.assignAll) && !S.groups[gid].cur) assign(gid, S.assignAll, true);
       } else if (st.cid !== d.cid) {
-        if (online[sid] && Date.now() - online[sid] < 20000) { net.send({ t: 'taken', cid: d.cid }, sid); return; }
-        net.send({ t: 'replaced', cid: st.cid }, sid);
+        if (online[sid] && Date.now() - online[sid] < 20000) { toast('⚠ 學號 ' + sid + ' 已經有人在用，另一台裝置想加入被擋下了', false, true); net.send({ t: 'taken', cid: d.cid }, sid); return; }
+        net.send({ t: 'replaced', cid: st.cid }, sid); toast('🔄 ' + stuLabel(sid) + ' 換了裝置重新加入', false, true);
         st.cid = d.cid;
       }
+      if (!online[sid]) toast('👋 ' + stuLabel(sid) + ' 進入教室', false, true);
       online[sid] = Date.now(); delete lastSent[sid];
       net.send({ t: 'welcome', cid: d.cid, sid: sid }, sid);
       if (CD) cdSend(sid);
@@ -276,7 +285,7 @@
   }
   setInterval(function () {
     var now = Date.now(), ch = false;
-    for (var s in online) if (now - online[s] > 25000) { delete online[s]; delete lastSent[s]; delete away[s]; ch = true; }
+    for (var s in online) if (now - online[s] > 25000) { toast('📴 ' + stuLabel(s) + ' 斷線了（可能關掉頁面、沒網路或沒電）', false, true); delete online[s]; delete lastSent[s]; delete away[s]; ch = true; }
     if (ch) { renderRoster(); renderTask(); }
   }, 5000);
 
@@ -1315,7 +1324,7 @@
     }, 50);
     if (to === 'show' && tv.kind !== 'page') tv = { kind: 'page' };
     save(); renderMode(); refreshAll(); showBoard(); renderTask();
-    toast(was === 'work' ? (auto ? '⏰ 作業時間到了，已自動回到上課模式' : '已結束作業，切換到' + MODE_NAME[to]) : to === 'show' ? '📽️ 簡報模式：只能翻頁和播放影片，按 ← → 鍵或下方按鈕換頁' : '🧑‍🏫 上課模式：可以用所有工具，學生只能看');
+    toast(was === 'work' ? (auto ? '⏰ 作業時間到了，已自動回到上課模式' : '已結束作業，切換到' + MODE_NAME[to]) : to === 'show' ? '📽️ 簡報模式：只能翻頁和播放影片，按 ← → 鍵或下方按鈕換頁' : '🧑‍🏫 上課模式：可以用所有工具，學生只能看', false, !!auto);
   }
   function flip(d) {
     var i = pageIdx(S.cur) + d; if (i < 0 || i >= S.pages.length) return toast(d > 0 ? '已經是最後一頁' : '已經是第一頁');
@@ -1788,6 +1797,8 @@
   var drv = { tok: null, exp: 0, user: null, ready: false, tc: null, loading: false };
   var fbUser = null; /* 相容舊程式：有登入就是真值 */
   try { var sv = JSON.parse(sessionStorage.getItem('wb-gtok') || 'null'); if (sv && sv.exp > Date.now() + 60000) { drv.tok = sv.tok; drv.exp = sv.exp; drv.user = sv.user; fbUser = sv.user; } } catch (e) {}
+  var expWarned = false;
+  setInterval(function () { if (fbUser && drv.exp) { var left = drv.exp - Date.now(); if (left > 0 && left < 300000 && !expWarned) { expWarned = true; toast('⚠ Google 雲端連線 5 分鐘內會到期，到期後不會自動存專案，請到「💾 專案」重新連線', false, true); } else if (left >= 300000) expWarned = false; } }, 30000);
   function drvStateChanged() {
     fbUser = drv.tok && drv.exp > Date.now() ? drv.user : null;
     var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection());
@@ -2245,6 +2256,7 @@
     var l = cdLeft();
     cdBox.querySelector('.cd-t').textContent = (l <= 0 ? '⏰ 時間到！' : '⏱ ' + cdFmt(l));
     cdBox.querySelector('[data-a="p"]').textContent = CD.paused ? '▶' : '⏸';
+    if (l <= 0 && !CD.nd) { CD.nd = 1; toast('⏰ 倒數計時時間到了', false, true); }
     cdBox.classList.toggle('hurry', l > 0 && l <= 10000); cdBox.classList.toggle('done', l <= 0);
   }
   function cdStart(ms) { CD = { total: ms, left: ms, end: Date.now() + ms, paused: false, fired: false }; cdSend(); cdDraw(); }
@@ -2330,6 +2342,7 @@
     var tg = pollTargets(); if (tg && tg.indexOf(sid) < 0) return;
     var o = +d.o; if (!(o >= 0 && o < POLL.opts.length)) return;
     POLL.votes[sid] = o; pollDraw(); if (POLL.show) pollSend();
+    var need = tg || Object.keys(online); if (!POLL.nd && need.length && need.every(function (s) { return POLL.votes[s] != null || !online[s]; })) { POLL.nd = 1; toast('🗳 全班都投票了（' + Object.keys(POLL.votes).length + ' 人）', false, true); }
   }
   function pollDraw() {
     if (!POLL) { if (pollBox) { pollBox.parentNode.removeChild(pollBox); pollBox = null; } return; }
@@ -2690,7 +2703,7 @@
     '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><p>筆、橡皮擦、圖形、插入、課堂、動作：電腦上滑鼠移上去就會浮出選單，平板和手機按一下展開。頁面欄收起來時，滑鼠碰到左邊的「頁面」小標籤會暫時浮出（不會改變畫板大小），滑鼠離開 3 秒後自動收回；按 📌 可固定打開。</p><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>：展開後可選大小，裡面也有<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>簡報模式的翻頁列</b>也是同樣的小橫槓，碰到或點一下才彈出。</li><li><b>影片（YouTube）給學生</b>：預設學生只看到影片的封面圖，不能自己點播放；選取影片後在物件選單按「學生可以自己點開播放」就開放。<b>重要：</b>要控制學生在自己作業畫布上的影片能不能播放，請在<b>指派作業之前</b>就在自己的頁面設定好（指派時會連同設定複製給各組）；作業已經開始之後，每組有自己的一份畫板，要用「與該組共做」進入那位學生（那一組）的畫面，再在他的影片上開或關。在自己的老師畫布上開關，也會同步到已指派出去、同一頁上同一部影片的各組畫板；如果沒有反應，就進共做畫面直接改那一組。注意：同一頁第一次指派時才會複製頁面，之後才加進老師那頁的影片不會自動出現在已指派的組別畫板上。你自己按播放時，學生畫面都會跟著播放（不受這個開關影響）。</li><li><b>雲端存專案</b>：「💾 專案」→「我的專案」用 Google 登入後，專案和工具欄順序會存進<b>你自己 Google 雲端硬碟裡這個工具專用的隱藏資料夾</b>（不會出現在你的檔案清單，不佔用別人的空間）。登入連線大約每小時過期，過期時按「重新連線 Google 雲端」即可。</li><li><b>指派多頁</b>：各組的小方塊下方有「◀ 第 N 頁 ▶」，可以單獨讓那一組換頁或直接指定第幾頁。 在「📋 任務」勾選多頁時，下方可選兩種方式。<b>輪流分給各組</b>：每組只拿一頁（第 1 組第一頁、第 2 組第二頁…），適合各組做不同題目。<b>每組都拿到全部勾選頁</b>：每組都有這幾頁，可以勾選「學生可以自己換頁」讓學生用畫面下方的 ‹ › 自己換；不勾的話只有老師能換，用任務列的「◀ 上一頁／下一頁 ▶」一鍵讓（勾選的或全部的）組別一起換頁。各頁上寫的內容都會保留。</li><li><b>學生離開畫布提醒</b>：學生切到別的分頁或 app、鎖螢幕時，右上角會跳出「⚠ 學號 ○○ 離開畫布了」，學生名單也會標示；按「🔔 叫他回來」，學生回來時畫面上方會出現紅色提醒，並響鈴、震動約 3 秒；紅色文字會一直留著，直到學生自己點掉。注意：電腦上若是把別的視窗並排開著、畫布仍在畫面上，工具偵測不到。</li><li><b>快速選頁</b>：畫板最下方有一條微透明的小橫槓，滑鼠碰到或手指點一下就會彈出（離開 2 秒自動收摺，也可按 ⌄ 收起）；頁面欄標題的 🔲 可以看全部頁面的縮圖，點一張就跳過去；在裡面可以勾選多頁一起刪除，或按住 ⠿ 拖曳來移動頁面順序（選了多頁就一起移）。展開後有「‹ 頁碼 / 總頁數 ›」和「＋」：左右鍵翻頁、點頁碼輸入數字按 Enter 直接跳頁、「＋」在目前這頁後面立刻加一張空白頁。</li><li><b>結束課程</b>：在上方「🚪 教室入口」的視窗裡。</li><li><b>全選</b>：按 Ctrl+A（Mac 按 ⌘+A）可以選取這一頁所有物件，再用「⋯」選單一起鎖定、複製、刪除。</li><li><b>畫布物件</b>：展開後有<b>全部鎖定</b>（鎖住後不會誤拖物件；用全選後的「⋯」鎖定也算全部鎖定。全部鎖定時按鈕和畫布左上角都會出現 🔒 提示）和<b>圖層</b>（選一個物件後按置頂、上移、下移、置底，或開圖層面板）；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單，要按「編輯抽籤項目」才會顯示輸入框，避免學生盯著看）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示；計時器可拖動、拖右下角縮放，有「＋5～＋30 秒」按鈕，時間到連續響約 6 秒）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布；也能<b>下載「題目範本」</b>用 Excel 編好一次上傳很多題，清單只顯示題號和題目，點「出這題」就送出，還可指定只出給某幾組或某幾位學生）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
-    '<h4>🔔 通知記錄</h4><p>「💾 專案」→ 下方「通知記錄」，分「系統」（存專案、雲端、連線問題）和「課程」（課堂操作、物件新增修改刪除）兩類，從這次登入開始記，重新登入會重記。儲存專案這類通知只記錄不跳出；有新通知時「專案」旁會有橘色閃爍光點，打開查看後消失。</p>'+
+    '<h4>🔔 通知記錄</h4><p>必跳通知（會記錄、跳出、橘點閃）還包括：教室連線中斷／恢復、這台電腦無法自動儲存、Google 雲端快到期、倒數計時和作業時間到、全班投票完成。橘色閃爍光點只在「系統」通知（雲端、連線問題）和「學生狀態」（離開畫布、回來、斷線、進入教室、學號被重複使用、換裝置）出現；一般的畫、移動、改物件只記在「課程」記錄，不閃。「💾 專案」→ 下方「通知記錄」，分「系統」（存專案、雲端、連線問題）和「課程」（課堂操作、物件新增修改刪除）兩類，從這次登入開始記，重新登入會重記。儲存專案這類通知只記錄不跳出；有新通知時「專案」旁會有橘色閃爍光點，打開查看後消失。</p>'+
     '<h4>☁️ 自動儲存</h4><p>專案存到「我的專案」之後，你每次修改，停手約 6 秒就會自動同步到雲端同一個專案，不用再按存。要另存新版本請按「另存成一份新的」。要保留舊版本，請先另存再修改。</p>'+
     '<h4>🖼️ 編輯圖片</h4><p>在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
