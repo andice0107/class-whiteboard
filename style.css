@@ -562,3 +562,13 @@ body.host.dark .pg-nav .pn-in{background:#1f2433;color:var(--ink);border-color:#
 .th-card.on{border-color:var(--pri,#4c6ef5)}
 .th-no{position:absolute;left:6px;top:4px;background:#000a;color:#fff;border-radius:8px;padding:0 8px;font-size:14px}
 .th-add{min-height:100px;border-style:dashed}
+
+.th-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0}
+.th-card.sel{border-color:#f59f00;box-shadow:0 0 0 2px #f59f0066}
+.th-card.mv{opacity:.4}
+.th-ck{position:absolute;right:4px;top:3px;border:0;background:#fffc;border-radius:8px;font-size:22px;line-height:1;padding:0 4px;color:#364fc7}
+.th-hd{position:absolute;right:4px;bottom:3px;background:#000a;color:#fff;border-radius:8px;padding:2px 8px;font-size:20px;line-height:1;cursor:grab;touch-action:none}
+.th-card.drop-b::before,.th-card.drop-a::after{content:"";position:absolute;top:0;bottom:0;width:7px;background:#f03e3e;z-index:3}
+.th-card.drop-b::before{left:0}
+.th-card.drop-a::after{right:0}
+.th-ghost{position:fixed;z-index:200;pointer-events:none;background:#364fc7;color:#fff;border-radius:10px;padding:6px 12px;font-weight:800}
