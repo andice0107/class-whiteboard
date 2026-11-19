@@ -572,3 +572,14 @@ body.host.dark .pg-nav .pn-in{background:#1f2433;color:var(--ink);border-color:#
 .th-card.drop-b::before{left:0}
 .th-card.drop-a::after{right:0}
 .th-ghost{position:fixed;z-index:200;pointer-events:none;background:#364fc7;color:#fff;border-radius:10px;padding:6px 12px;font-weight:800}
+
+/* 簡報模式翻頁列：可收摺小橫槓 */
+.show-nav{bottom:0;border-radius:16px 16px 0 0;padding:6px 12px 8px}
+.show-nav:not(.open){padding:0;gap:0;width:140px;height:18px;justify-content:center;align-items:flex-end;background:transparent;box-shadow:none;cursor:pointer}
+.show-nav:not(.open)>*{display:none}
+.show-nav:not(.open) .pn-grip{display:block;width:100px;height:8px;border-radius:8px 8px 0 0;background:#556;opacity:.4}
+.show-nav.open .pn-grip{display:none}
+.show-nav .pn-min{padding:4px 10px;font-size:18px}
+
+.show-nav .pn-in{width:56px;text-align:center;border:2px solid #334;border-radius:999px;font-size:18px;font-weight:800;padding:4px 0}
+.show-nav .pn-t{min-width:0}
