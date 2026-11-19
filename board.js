@@ -60,14 +60,56 @@ window.WB = (function () {
       for (var y = 1; y < r; y++) poly([[0, h * y / r], [w, h * y / r]], false);
       for (var x = 1; x < c; x++) poly([[w * x / c, 0], [w * x / c, h]], false);
     }
+    else if (sh === 'ruler') {
+      var rn = o.n || 15, fsr = Math.max(10, Math.min(28, h * 0.26));
+      poly([[0, 0], [w, 0], [w, h], [0, h]]);
+      for (var ri = 0; ri <= rn * 10; ri++) {
+        var rx = w * ri / (rn * 10), rl = ri % 10 === 0 ? h * 0.5 : ri % 5 === 0 ? h * 0.36 : h * 0.22;
+        poly([[rx, 0], [rx, rl]], false);
+        if (ri % 10 === 0) L.push({ t: 'x', x: rx, y: h * 0.5 + fsr * 0.8, s: String(ri / 10), fs: fsr });
+      }
+    } else if (sh === 'protr') {
+      var pcx = w / 2, pcy = h, R = Math.min(w / 2, h), arc = [], pd, fsp = Math.max(9, Math.min(20, R * 0.075));
+      for (pd = 0; pd <= 180; pd += 3) arc.push([pcx + R * Math.cos(pd * Math.PI / 180), pcy - R * Math.sin(pd * Math.PI / 180)]);
+      poly(arc);
+      for (pd = 0; pd <= 180; pd += 2) {
+        var pl = pd % 10 === 0 ? R * 0.14 : pd % 5 === 0 ? R * 0.1 : R * 0.06, pc = Math.cos(pd * Math.PI / 180), ps = Math.sin(pd * Math.PI / 180);
+        poly([[pcx + R * pc, pcy - R * ps], [pcx + (R - pl) * pc, pcy - (R - pl) * ps]], false);
+        if (pd % 10 === 0) {
+          L.push({ t: 'x', x: pcx + R * 0.8 * pc, y: pcy - R * 0.8 * ps, s: String(pd), fs: fsp });
+          L.push({ t: 'x', x: pcx + R * 0.62 * pc, y: pcy - R * 0.62 * ps, s: String(180 - pd), fs: fsp * 0.85 });
+        }
+      }
+      poly([[pcx - R * 0.06, pcy], [pcx + R * 0.06, pcy]], false); poly([[pcx, pcy - R * 0.06], [pcx, pcy]], false);
+    } else if (sh === 'numline') {
+      var nmin = o.nmin == null ? 0 : o.nmin, nmax = o.nmax == null ? 10 : o.nmax, st = o.st || 1, mg = w * 0.05, ly = h * 0.4, fsn = Math.max(12, Math.min(34, h * 0.3));
+      if (nmax <= nmin) nmax = nmin + 1;
+      poly([[0, ly], [w, ly]], false); poly([[w - 14, ly - 8], [w, ly], [w - 14, ly + 8]], false); poly([[14, ly - 8], [0, ly], [14, ly + 8]], false);
+      var cnt = Math.min(60, Math.floor((nmax - nmin) / st + 1e-9));
+      for (var ni = 0; ni <= cnt; ni++) {
+        var nv = nmin + ni * st, nx = mg + (w - 2 * mg) * (nv - nmin) / (nmax - nmin);
+        poly([[nx, ly - h * 0.16], [nx, ly + h * 0.16]], false);
+        L.push({ t: 'x', x: nx, y: ly + h * 0.16 + fsn * 0.9, s: String(Math.round(nv * 100) / 100), fs: fsn });
+      }
+    } else if (sh === 'clock') {
+      var ccx = w / 2, ccy = h / 2, CR = Math.min(w, h) / 2, hh = (o.hh == null ? 3 : o.hh) % 12, mm = o.mm == null ? 0 : o.mm, ck, fsc = Math.max(12, CR * 0.2);
+      L.push({ t: 'e' });
+      for (ck = 0; ck < 60; ck++) { var ca = ck * 6 * Math.PI / 180, cl = ck % 5 === 0 ? CR * 0.09 : CR * 0.04; poly([[ccx + CR * 0.97 * Math.sin(ca), ccy - CR * 0.97 * Math.cos(ca)], [ccx + (CR * 0.97 - cl) * Math.sin(ca), ccy - (CR * 0.97 - cl) * Math.cos(ca)]], false); }
+      for (ck = 1; ck <= 12; ck++) { var na = ck * 30 * Math.PI / 180; L.push({ t: 'x', x: ccx + CR * 0.76 * Math.sin(na), y: ccy - CR * 0.76 * Math.cos(na), s: String(ck), fs: fsc }); }
+      var ha = (hh * 30 + mm * 0.5) * Math.PI / 180, ma = mm * 6 * Math.PI / 180;
+      L.push({ t: 'p', pts: [[ccx, ccy], [ccx + CR * 0.45 * Math.sin(ha), ccy - CR * 0.45 * Math.cos(ha)]], c: false, sw: Math.max(5, CR * 0.04) });
+      L.push({ t: 'p', pts: [[ccx, ccy], [ccx + CR * 0.68 * Math.sin(ma), ccy - CR * 0.68 * Math.cos(ma)]], c: false, sw: Math.max(3, CR * 0.025) });
+      L.push({ t: 'p', pts: [[ccx, ccy], [ccx + 0.1, ccy]], c: false, sw: Math.max(8, CR * 0.07) });
+    }
     return L;
   }
   function shapeSvg(o) {
     var g = shapeGeo(o), fill = o.fill ? (o.fc || '#ffd6e0') : 'none', sw = o.sw || 3, out = '';
     g.forEach(function (it, i) {
       var f = (i === 0 && it.c !== false) ? fill : 'none';
+      if (it.t === 'x') { out += '<text x="' + it.x.toFixed(1) + '" y="' + it.y.toFixed(1) + '" font-size="' + it.fs.toFixed(1) + '" text-anchor="middle" dominant-baseline="central" stroke="none" fill="' + (o.sc || '#111') + '">' + it.s + '</text>'; return; }
       if (it.t === 'e') out += '<ellipse cx="' + o.w / 2 + '" cy="' + o.h / 2 + '" rx="' + o.w / 2 + '" ry="' + o.h / 2 + '" fill="' + fill + '"/>';
-      else out += '<polyline points="' + it.pts.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') + (it.c ? ' ' + it.pts[0][0].toFixed(1) + ',' + it.pts[0][1].toFixed(1) : '') + '" fill="' + f + '"/>';
+      else out += '<polyline points="' + it.pts.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') + (it.c ? ' ' + it.pts[0][0].toFixed(1) + ',' + it.pts[0][1].toFixed(1) : '') + '" fill="' + f + '"' + (it.sw ? ' stroke-width="' + it.sw.toFixed(1) + '"' : '') + '/>';
     });
     return '<svg width="' + o.w + '" height="' + o.h + '" viewBox="0 0 ' + o.w + ' ' + o.h + '" style="overflow:visible;opacity:' + (o.op == null ? 1 : o.op) + '" stroke="' + (o.sc || '#111') + '" stroke-width="' + sw + '" stroke-linejoin="round" stroke-linecap="round">' + out + '</svg>';
   }
@@ -75,6 +117,8 @@ window.WB = (function () {
     ctx.save(); ctx.translate(-o.w / 2, -o.h / 2); ctx.globalAlpha = o.op == null ? 1 : o.op;
     ctx.strokeStyle = o.sc || '#111'; ctx.lineWidth = o.sw || 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     shapeGeo(o).forEach(function (it, i) {
+      if (it.t === 'x') { ctx.save(); ctx.fillStyle = o.sc || '#111'; ctx.font = it.fs + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(it.s, it.x, it.y); ctx.restore(); return; }
+      ctx.lineWidth = it.sw || o.sw || 3;
       ctx.beginPath();
       if (it.t === 'e') ctx.ellipse(o.w / 2, o.h / 2, Math.max(1, o.w / 2), Math.max(1, o.h / 2), 0, 0, Math.PI * 2);
       else { ctx.moveTo(it.pts[0][0], it.pts[0][1]); for (var j = 1; j < it.pts.length; j++) ctx.lineTo(it.pts[j][0], it.pts[j][1]); if (it.c) ctx.closePath(); }

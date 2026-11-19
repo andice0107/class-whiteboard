@@ -483,6 +483,18 @@
       if (!lk) mi('🗑️ 全部刪除', function () { closePop(); V.groupOp('del'); renderTools(); }, 'danger');
     });
   }
+  var BGS = [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線'], ['tian', '田 田字格'], ['zy', 'ㄅ 國字注音格'], ['paper', '✎ 作文稿紙'], ['ruled', '≡ 橫線']];
+  function addAid(kind) {
+    var D = {
+      ruler: { w: 900, h: 90, n: 15, fill: true, fc: '#fff3bf', op: 0.92, sc: '#333333', sw: 1.5 },
+      protr: { w: 640, h: 330, fill: true, fc: '#d0ebff', op: 0.8, sc: '#1c3d6e', sw: 1.5 },
+      numline: { w: 1000, h: 110, nmin: 0, nmax: 10, st: 1, fill: false, op: 1, sc: '#111111', sw: 3 },
+      clock: { w: 380, h: 380, hh: 3, mm: 0, fill: true, fc: '#ffffff', op: 1, sc: '#111111', sw: 3 }
+    }[kind], c = center(D.w, D.h); toSelect();
+    var o = { id: WB.uid(), k: 'g', by: 'T', shape: kind, x: c.x, y: c.y, r: 0, fx: false };
+    for (var k in D) o[k] = D[k];
+    V.addObj(o); renderTools();
+  }
   function insertPanel(anchor) {
     openPop(anchor, function (p) {
       p.classList.add('ins-pop');
@@ -502,9 +514,13 @@
       r.appendChild(btn('btn', '🖼️ 選擇圖片檔', function () { closePop(); $('file-in').click(); }));
       r.appendChild(btn('btn', '📋 貼上（Ctrl+V）', function () { closePop(); pasteButton(); }));
       p.appendChild(r);
+      p.appendChild(el('div', 'pop-l tag t5', '📐 教具（放上去可以拖、縮放、旋轉）'));
+      r = el('div', 'pop-row');
+      [['ruler', '📏 直尺'], ['protr', '📐 量角器'], ['numline', '↔️ 數線'], ['clock', '🕒 時鐘']].forEach(function (b) { r.appendChild(btn('btn', b[1], function () { closePop(); addAid(b[0]); })); });
+      p.appendChild(r);
       p.appendChild(el('div', 'pop-l tag t4', '▦ 畫布背景（移動物件時會對齊格子）'));
       r = el('div', 'pop-row');
-      [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線']].forEach(function (b) { r.appendChild(btn('btn' + ((V.bg || '') === b[0] ? ' primary' : ''), b[1], function () { closePop(); setBg(b[0]); })); });
+      BGS.forEach(function (b) { r.appendChild(btn('btn' + ((V.bg || '') === b[0] ? ' primary' : ''), b[1], function () { closePop(); setBg(b[0]); })); });
       p.appendChild(r);
       p.appendChild(el('div', 'pop-l', '學生能不能貼便利貼，在「📋 任務指派」每一組設定。'));
     });
@@ -535,6 +551,25 @@
       m.appendChild(btn('mi' + (o.lk ? ' on' : ''), o.lk ? '🔓 解除鎖定這個物件' : '🔒 鎖定這個物件（不會被移動或修改）', function () { chg({ lk: !o.lk }); }));
       if (o.k !== 's') m.appendChild(btn('mi' + (o.hd ? ' on' : ''), o.hd ? '👁 揭曉給學生看' : '🙈 先隱藏（學生看不到，之後再揭曉）', function () { chg({ hd: o.hd ? false : true }); }));
       if (o.lk) { m.appendChild(el('div', 'pop-l', '解除鎖定後才能移動、縮放、修改。')); return; }
+      if (o.k === 'g' && (o.shape === 'clock' || o.shape === 'numline')) {
+        m.appendChild(el('div', 'pop-l', o.shape === 'clock' ? '時間' : '數線範圍'));
+        var ra = row();
+        if (o.shape === 'clock') {
+          ra.appendChild(btn('btn sm', '時－', function () { chg({ hh: ((o.hh == null ? 3 : o.hh) + 11) % 12 }); }));
+          ra.appendChild(btn('btn sm', '時＋', function () { chg({ hh: ((o.hh == null ? 3 : o.hh) + 1) % 12 }); }));
+          ra.appendChild(btn('btn sm', '分－5', function () { chg({ mm: ((o.mm || 0) + 55) % 60 }); }));
+          ra.appendChild(btn('btn sm', '分＋5', function () { chg({ mm: ((o.mm || 0) + 5) % 60 }); }));
+          ra.appendChild(btn('btn sm', '分＋1', function () { chg({ mm: ((o.mm || 0) + 1) % 60 }); }));
+        } else {
+          var nn = o.nmin == null ? 0 : o.nmin, nx = o.nmax == null ? 10 : o.nmax, ns = o.st || 1;
+          ra.appendChild(btn('btn sm', '起點－', function () { chg({ nmin: nn - ns }); }));
+          ra.appendChild(btn('btn sm', '起點＋', function () { if (nn + ns < nx) chg({ nmin: nn + ns }); }));
+          ra.appendChild(btn('btn sm', '終點－', function () { if (nx - ns > nn) chg({ nmax: nx - ns }); }));
+          ra.appendChild(btn('btn sm', '終點＋', function () { chg({ nmax: nx + ns }); }));
+          var rb = row();
+          [['每格 1', 1], ['每格 2', 2], ['每格 5', 5], ['每格 10', 10], ['每格 0.5', 0.5], ['每格 0.1', 0.1]].forEach(function (z) { rb.appendChild(btn('btn sm' + (ns === z[1] ? ' primary' : ''), z[0], function () { chg({ st: z[1] }); })); });
+        }
+      }
       if (o.k === 't' || o.k === 'n' || o.k === 'g') {
         var r1 = row();
         r1.appendChild(btn('btn sm primary', '✏️ ' + (o.k === 'g' ? '在圖形裡打字' : '編輯文字'), function () { closePop(); V.editText(o.id); }));
@@ -732,7 +767,7 @@
       item('➕ 在後面新增空白頁', function () { newPage(p.id); });
       if (i > 0) item('⬆️ 往前移', function () { S.pages.splice(i, 1); S.pages.splice(i - 1, 0, p); save(); renderPages(); refreshAll(); });
       if (i < S.pages.length - 1) item('⬇️ 往後移', function () { S.pages.splice(i, 1); S.pages.splice(i + 1, 0, p); save(); renderPages(); refreshAll(); });
-      item('▦ 背景：' + ({ '': '空白', dots: '格點', grid: '格線' }[p.bg || '']) + '（點一下換）', function () { p.bg = { '': 'dots', dots: 'grid', grid: '' }[p.bg || '']; save(); if (curBid() === 'P:' + p.id) V.setBg(p.bg); refreshAll(); boardChanged('P:' + p.id); renderTools(); });
+      item('▦ 背景：' + (BGS.filter(function (x) { return x[0] === (p.bg || ''); })[0] || ['', '空白'])[1].replace(/^\S+ /, '') + '（點一下換）', function () { var bi = 0; BGS.forEach(function (x, ix) { if (x[0] === (p.bg || '')) bi = ix; }); p.bg = BGS[(bi + 1) % BGS.length][0]; save(); if (curBid() === 'P:' + p.id) V.setBg(p.bg); refreshAll(); boardChanged('P:' + p.id); renderTools(); });
       item('🧹 清除這一頁的筆劃', function () { confirmBox('要清除第 ' + (i + 1) + ' 頁的所有筆劃嗎？（圖片、文字、圖形、便利貼會保留）', '清除', function () { var rem = p.objs.filter(function (o) { return o.k === 's'; }).map(function (o) { return o.id; }); WB.applyOp(p.objs, { del: rem }); distribute('P:' + p.id, { t: 'op', op: { del: rem, add: [] } }); if (V.bid === 'P:' + p.id) V.apply(V.bid, { del: rem }); save(); boardChanged('P:' + p.id); }); });
       item('💾 這一頁另存成圖片', function () { var cv = document.createElement('canvas'); cv.width = 1600; cv.height = 900; WB.render(cv.getContext('2d'), p.objs, 1, '#fff', true); var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = 'Andice的共用畫板_第' + (i + 1) + '頁.png'; a.click(); });
       if (S.pages.length > 1) item('🗑️ 刪除這一頁', function () { confirmBox('要刪除第 ' + (i + 1) + ' 頁嗎？（指派到這一頁的組別作答內容也會一起刪除，刪掉就救不回來）', '刪除', function () { delPage(p.id); }); }, 'danger');
@@ -1572,6 +1607,10 @@
     });
   }
   /* ---------- ❓ 如何使用（給使用者／給AI） ---------- */
+  var UI = {}; try { UI = JSON.parse(localStorage.getItem('wb-ui') || '{}') || {}; } catch (e) { UI = {}; }
+  function applyUI() { document.body.classList.toggle('dark', !!UI.dark); document.body.classList.toggle('ui-big', UI.size === 'big'); document.body.classList.toggle('ui-xl', UI.size === 'xl'); setTimeout(function () { V.refit && V.refit(); }, 50); }
+  function saveUI() { try { localStorage.setItem('wb-ui', JSON.stringify(UI)); } catch (e) {} applyUI(); }
+  applyUI();
   var HELP_SAMPLE = {
     app: 'class-whiteboard', v: 1, name: '範本：三上國語第一課',
     pages: [
@@ -1628,8 +1667,21 @@
       var tabs = el('div', 'help-tabs'), body = el('div', 'help-body');
       var tU = btn('btn', '📖 基本功能介紹', function () { helpModal('u'); });
       var tA = btn('btn', '🤖 給AI的說明', function () { helpModal('a'); });
-      (tab === 'a' ? tA : tU).classList.add('primary'); tabs.appendChild(tU); tabs.appendChild(tA);
+      var tS = btn('btn', '🎨 顯示設定', function () { helpModal('s'); });
+      (tab === 'a' ? tA : tab === 's' ? tS : tU).classList.add('primary'); tabs.appendChild(tU); tabs.appendChild(tA); tabs.appendChild(tS);
       box.appendChild(tabs); box.appendChild(body);
+      if (tab === 's') {
+        body.appendChild(el('p', 'hint', '這些設定只影響<b>老師這台電腦／平板</b>，學生的畫面不會變。設定會記在這個瀏覽器。'));
+        body.appendChild(el('div', 'pop-l tag t2', '🔠 字體大小（工具欄文字、選單、說明視窗）'));
+        var r1 = el('div', 'proj-acts');
+        [['', '標準'], ['big', '大'], ['xl', '特大']].forEach(function (z) { r1.appendChild(btn('btn' + ((UI.size || '') === z[0] ? ' primary' : ''), z[1], function () { UI.size = z[0]; saveUI(); helpModal('s'); })); });
+        body.appendChild(r1);
+        body.appendChild(el('div', 'pop-l tag t3', '🌙 顏色'));
+        var r2 = el('div', 'proj-acts');
+        [[false, '☀️ 淺色'], [true, '🌙 深色（工具欄、選單變暗；畫布維持白色，筆跡才看得清楚）']].forEach(function (z) { r2.appendChild(btn('btn' + (!!UI.dark === z[0] ? ' primary' : ''), z[1], function () { UI.dark = z[0]; saveUI(); helpModal('s'); })); });
+        body.appendChild(r2);
+        return;
+      }
       if (tab === 'a') {
         body.appendChild(el('p', 'hint', '想請 AI（Claude、ChatGPT、Gemini 都可以）幫你做或改上課內容時：<b>① 按下面的「複製提示詞」→ ② 貼給 AI，再接著寫你要的課程內容 → ③ 把 AI 給你的 JSON 存成檔案（副檔名要是 .wbproj.json，或直接用「💾 專案」裡的開啟）→ ④ 用「💾 專案 → 📂 開啟專案檔」打開。</b>要請 AI 修改現有專案：先用「💾 存成專案檔」下載，把檔案內容一起貼給 AI。'));
         var r = el('div', 'proj-acts');
@@ -1647,10 +1699,10 @@
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
     '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、背景（空白／格點／格線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、<b>教具</b>（直尺、量角器、數線、時鐘；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
-    '<h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
+    '<h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
   $('b-help').onclick = function () { helpModal('u'); };
 

@@ -409,3 +409,45 @@ body.swap .host-main .work{flex-direction:row-reverse}
 .cd-host.done .cd-t{color:#f03e3e}
 .cd-stu{font-size:28px;padding:6px 18px;top:8px;pointer-events:none;color:#364fc7}
 @keyframes cdp{50%{box-shadow:0 0 0 8px #f03e3e44}}
+/* 背景：田字格、國字注音格、作文稿紙、橫線 */
+.wb-bgl.bg-tian{background-image:linear-gradient(#d9480f 2px,transparent 2px),linear-gradient(90deg,#d9480f 2px,transparent 2px),linear-gradient(#ffc9a8 1px,transparent 1px),linear-gradient(90deg,#ffc9a8 1px,transparent 1px);background-size:200px 200px,200px 200px,100px 100px,100px 100px}
+.wb-bgl.bg-zy{background-image:linear-gradient(#2f9e44 2px,transparent 2px),linear-gradient(90deg,#2f9e44 2px,transparent 2px),linear-gradient(90deg,transparent 198px,#2f9e44 198px,#2f9e44 200px,transparent 200px),linear-gradient(90deg,transparent 258px,#2f9e44 258px,#2f9e44 260px,transparent 260px),linear-gradient(#b2dfb9 1px,transparent 1px),linear-gradient(90deg,transparent 99px,#b2dfb9 99px,#b2dfb9 100px,transparent 100px);background-size:260px 200px,260px 200px,260px 200px,260px 200px,260px 100px,260px 200px}
+.wb-bgl.bg-paper{background-image:linear-gradient(#2f9e44 1px,transparent 1px),linear-gradient(90deg,#2f9e44 1px,transparent 1px);background-size:80px 80px,80px 80px}
+.wb-bgl.bg-ruled{background-image:linear-gradient(#a5b4d6 2px,transparent 2px);background-size:100% 70px;background-position:0 55px}
+.pop-l.tag.t5{background:#ffe3e3;border-left:5px solid #e03131;color:#a61e1e}
+/* 字體放大（老師端） */
+body.host.ui-big .toolbar .tb small{font-size:13px}
+body.host.ui-big .pop,body.host.ui-big .modal-box{font-size:17px}
+body.host.ui-big .pop .btn,body.host.ui-big .pop .mi{font-size:17px}
+body.host.ui-big .pages,body.host.ui-big .side{font-size:16px}
+body.host.ui-xl .toolbar .tb small{font-size:15px}
+body.host.ui-xl .pop,body.host.ui-xl .modal-box{font-size:20px}
+body.host.ui-xl .pop .btn,body.host.ui-xl .pop .mi{font-size:20px}
+body.host.ui-xl .pages,body.host.ui-xl .side{font-size:18px}
+body.host.ui-xl .help-body{font-size:19px}
+body.host.ui-big .help-body{font-size:17px}
+/* 深色模式（只有老師端的介面；畫布維持白色） */
+body.host.dark{--bg:#161a24;--panel:#232938;--ink:#e8ebf4;--mute:#9aa3b8;--line:#394258;--pri:#6b8cff;--pri2:#2a3764}
+body.host.dark .btn,body.host.dark .pop,body.host.dark .modal-box,body.host.dark .toolbar .tb,body.host.dark .seg,body.host.dark .code-pill,body.host.dark .side,body.host.dark .pages,body.host.dark .draw-g,body.host.dark .draw-big,body.host.dark .cd-host{background-color:#2a3144;color:var(--ink)}
+body.host.dark .btn:hover{background:#343c52}
+body.host.dark .btn.primary,body.host.dark .seg button.on{background:#3d5fd6;color:#fff;border-color:#3d5fd6}
+body.host.dark .btn.danger{background:var(--bad);color:#fff}
+body.host.dark .bar{background:var(--panel)}
+body.host.dark .code-pill{background:#2a3764;color:#aebfff}
+body.host.dark .seg button{color:#9aa3b8}
+body.host.dark .seg button.on{color:#fff}
+body.host.dark input,body.host.dark textarea,body.host.dark select{background:#1c212e;color:var(--ink);border-color:#394258}
+body.host.dark .help-body h4{background:#2a3764;color:#dfe6ff}
+body.host.dark .draw-big{color:#aebfff}
+body.host.dark .draw-big.win{background:#4a3d12;color:#ffd43b}
+body.host.dark .pop-l.tag{color:#1f2433}
+body.host.dark .pop-h{color:var(--ink)}
+body.host.dark .toolbar .tb small,body.host.dark .pages *{color:var(--ink)}
+body.host.dark .cd-t{color:#aebfff}
+body.host.dark .host-main,body.host.dark .work{background:var(--bg)}
+/* 工具欄放不下時：用滑鼠滾輪或手指上下滑動來選，不影響畫布大小 */
+.host .toolbar{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.host .toolbar::-webkit-scrollbar{width:5px}
+.host .toolbar::-webkit-scrollbar-thumb{background:#9aa3b8;border-radius:4px}
+.host .toolbar>*{flex-shrink:0;min-height:44px}
+.host .toolbar>.tb-swap{min-height:26px}
