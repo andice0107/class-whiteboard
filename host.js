@@ -91,14 +91,33 @@
     return { bid: 'P:' + S.cur, pen: false, note: false, title: S.mode === 'work' ? '⏳ 老師還沒有指派畫板給你，先看老師的畫面' : S.mode === 'show' ? '📽️ 簡報中：看老師的畫面' : '🧑‍🏫 上課中：看老師的畫面', mode: S.mode, end: end, vp: S.mode !== 'work' ? S.zoom : null };
   }
   function genOf(bid) { if (bid.slice(0, 2) === 'G:') { var g = S.groups[bid.slice(2)]; return g ? g.cur : ''; } return ''; }
+  function pgMeta(sid, v) {
+    var st = S.students[sid], g = st && S.groups[st.gid];
+    if (g && g.pages && g.pages.length > 1 && v.bid === 'G:' + st.gid && g.pages.indexOf(g.cur) >= 0) return { pgn: g.pages.indexOf(g.cur) + 1, pgt: g.pages.length, pgf: !!g.free };
+    return { pgn: 0, pgt: 0, pgf: false };
+  }
+  /* 學生自己換頁（只有老師開放「學生可自己換頁」的組別才有效） */
+  function studentGoto(sid, d) {
+    var st = S.students[sid], g = st && S.groups[st.gid];
+    if (!g || !g.free || !g.pages || S.mode !== 'work' || g.lock) return;
+    var i = g.pages.indexOf(g.cur) + (d > 0 ? 1 : -1); if (i < 0 || i >= g.pages.length) return;
+    assign(st.gid, g.pages[i]); renderTask();
+  }
+  /* 老師一鍵讓（勾選的／全部的）組別換到上一頁或下一頁 */
+  function stepAllPages(d, gids) {
+    var n = 0;
+    gids.forEach(function (gid) { var g = S.groups[gid]; if (!g || !g.pages) return; var i = g.pages.indexOf(g.cur) + d; if (i < 0 || i >= g.pages.length) return; assign(gid, g.pages[i], true); n++; });
+    save(); refreshAll(); renderPages(); renderTask(); toast(n ? '已讓 ' + n + ' 組換到' + (d > 0 ? '下一頁' : '上一頁') : '沒有可以換頁的組別（已經是' + (d > 0 ? '最後' : '第一') + '頁了，或還沒有指派多頁）');
+  }
   function metaKey(v) { return [v.pen, v.note, v.title, v.mode, v.end, JSON.stringify(v.vp), bgOf(v.bid)].join('|'); }
   function refresh(sid, force) {
     var st = S.students[sid]; if (!st || !online[sid]) return;
     var v = viewFor(sid), L = lastSent[sid], m = { cid: st.cid, bid: v.bid, pen: v.pen, note: v.note, title: v.title, mode: v.mode, left: v.end ? Math.max(0, v.end - Date.now()) : null, vp: v.vp, bg: bgOf(v.bid) };
+    var pgx = pgMeta(sid, v); m.pgn = pgx.pgn; m.pgt = pgx.pgt; m.pgf = pgx.pgf;
     if (force || !L || L.bid !== v.bid || L.gen !== genOf(v.bid)) { m.t = 'view'; m.objs = objsOf(v.bid) || []; net.send(m, sid);
       if (V && V.bid === v.bid) m.objs.forEach(function (o) { var vs = o.k === 'v' && V.vt[o.id]; if (vs && vs.s === 1) net.send({ t: 'vid', bid: v.bid, id: o.id, cmd: 'play', at: vs.t || 0 }, sid); }); }
-    else if (L.key !== metaKey(v)) { m.t = 'meta'; net.send(m, sid); }
-    lastSent[sid] = { bid: v.bid, gen: genOf(v.bid), key: metaKey(v), pen: v.pen, note: v.note };
+    else if (L.key !== metaKey(v) + '|' + pgx.pgn + '/' + pgx.pgt + pgx.pgf) { m.t = 'meta'; net.send(m, sid); }
+    lastSent[sid] = { bid: v.bid, gen: genOf(v.bid), key: metaKey(v) + '|' + pgx.pgn + '/' + pgx.pgt + pgx.pgf, pen: v.pen, note: v.note };
   }
   function refreshAll(force) { Object.keys(S.students).forEach(function (s) { refresh(s, force); }); }
   /* 學生離開畫布提醒 */
@@ -171,6 +190,7 @@
     if (!was) { refresh(sid, true); renderRoster(); renderTask(); }
     if (d.t === 'vote') { pollVote(sid, d); return; }
     if (d.t === 'away') { setAway(sid, !!d.a); return; }
+    if (d.t === 'goto') { studentGoto(sid, +d.d); return; }
     var L = lastSent[sid];
     if (d.t === 'op') {
       if (!L || d.bid !== L.bid || (!L.pen && !L.note)) { refresh(sid, true); return; }
@@ -1047,7 +1067,7 @@
     S.pages.splice(i, 1);
     if (S.cur === pid) { S.cur = S.pages[Math.max(0, i - 1)].id; S.zoom = null; }
     if (S.assignAll === pid) S.assignAll = null;
-    for (var g in S.groups) { delete S.groups[g].boards[pid]; if (S.groups[g].cur === pid) S.groups[g].cur = null; }
+    for (var g in S.groups) { delete S.groups[g].boards[pid]; if (S.groups[g].cur === pid) S.groups[g].cur = null; if (S.groups[g].pages) { S.groups[g].pages = S.groups[g].pages.filter(function (x) { return x !== pid; }); if (S.groups[g].pages.length < 2) S.groups[g].pages = null; } }
     save(); refreshAll(); showBoard(); renderTask();
   }
   function drawThumb(cv, objs) { WB.render(cv.getContext('2d'), objs || [], cv.width / WB.W, '#fff', true); }
@@ -1219,7 +1239,8 @@
   }
   /* 勾選多頁時依序輪流分給勾選的組別 */
   function assignPages(pids, gids) {
-    gids.forEach(function (g, i) { assign(g, pids[i % pids.length], true); });
+    if (S.pgMode === 'all' && pids.length > 1) gids.forEach(function (g) { S.groups[g].pages = pids.slice(); S.groups[g].free = !!S.pgFree; assign(g, pids[0], true); });
+    else gids.forEach(function (g, i) { S.groups[g].pages = null; S.groups[g].free = false; assign(g, pids[i % pids.length], true); });
     save(); refreshAll(); renderPages(); renderTask();
     gids.forEach(function (g) { boardChanged('G:' + g); });
   }
@@ -1332,8 +1353,24 @@
       assignPages(pk, gk); toast('✅ 已指派' + (S.mode === 'work' ? '，學生可以開始操作' : '；按「作業模式」學生才能開始操作'));
     });
     a1.disabled = !pk.length || !gk.length; bar.appendChild(a1);
-    if (pk.length > 1) bar.appendChild(el('span', 'hint', '勾選多頁時，會依序輪流分給各組（第 1 組拿第一頁、第 2 組拿第二頁…）'));
-    var a2 = btn('btn', '⛔ 收回勾選組別的指派', function () { gk.forEach(function (g) { S.groups[g].cur = null; }); save(); refreshAll(); renderPages(); renderTask(); });
+    if (pk.length > 1) {
+      var pm = el('span', 'pg-mode');
+      pm.appendChild(btn('btn sm' + (S.pgMode !== 'all' ? ' primary' : ''), '輪流分給各組', function () { S.pgMode = 'rr'; save(); renderTask(); })).title = '第 1 組拿第一頁、第 2 組拿第二頁…，每組只有一頁';
+      pm.appendChild(btn('btn sm' + (S.pgMode === 'all' ? ' primary' : ''), '每組都拿到全部勾選頁', function () { S.pgMode = 'all'; save(); renderTask(); })).title = '每一組都有這幾頁，可以依序換頁';
+      if (S.pgMode === 'all') {
+        var fl = el('label', '', '<input type="checkbox"' + (S.pgFree ? ' checked' : '') + '> 學生可以自己換頁'); fl.firstChild.onchange = function () { S.pgFree = this.checked; save(); };
+        pm.appendChild(fl);
+      }
+      bar.appendChild(pm);
+    }
+    var multi = gids.filter(function (g) { return S.groups[g].pages; });
+    if (multi.length) {
+      var sp = el('span', 'pg-step'); sp.appendChild(el('span', '', '📖 換頁（' + (gk.length ? '勾選的組' : '全部多頁組別') + '）：'));
+      sp.appendChild(btn('btn sm', '◀ 上一頁', function () { stepAllPages(-1, gk.length ? gk : multi); }));
+      sp.appendChild(btn('btn sm', '下一頁 ▶', function () { stepAllPages(1, gk.length ? gk : multi); }));
+      bar.appendChild(sp);
+    }
+    var a2 = btn('btn', '⛔ 收回勾選組別的指派', function () { gk.forEach(function (g) { S.groups[g].cur = null; S.groups[g].pages = null; S.groups[g].free = false; }); save(); refreshAll(); renderPages(); renderTask(); });
     a2.disabled = !gk.length; bar.appendChild(a2);
     bar.appendChild(el('span', 'grow'));
     var cast = el('span', 'cast-ctl');
@@ -2394,7 +2431,7 @@
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
     '<h4>🔀 三種模式（上方中間的「模式：上課」，滑鼠移上去或點一下就能切換）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。作業中有「暫停」（倒數先停住）和「結束」兩個鍵，暫停後只剩「繼續」，按了從剩下的時間接著倒數。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><p>筆、橡皮擦、圖形、插入、課堂、動作：電腦上滑鼠移上去就會浮出選單，平板和手機按一下展開。頁面欄收起來時，滑鼠碰到左邊的「頁面」小標籤會暫時浮出（不會改變畫板大小），滑鼠離開 3 秒後自動收回；按 📌 可固定打開。</p><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>：展開後可選大小，裡面也有<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>簡報模式的翻頁列</b>也是同樣的小橫槓，碰到或點一下才彈出。</li><li><b>影片（YouTube）給學生</b>：預設學生只看到影片的封面圖，不能自己點播放；選取影片後在物件選單按「學生可以自己點開播放」就開放。<b>重要：</b>要控制學生在自己作業畫布上的影片能不能播放，請在<b>指派作業之前</b>就在自己的頁面設定好（指派時會連同設定複製給各組）；作業已經開始之後，每組有自己的一份畫板，要用「與該組共做」進入那位學生（那一組）的畫面，再在他的影片上開或關。在自己的老師畫布上開關，也會同步到已指派出去、同一頁上同一部影片的各組畫板；如果沒有反應，就進共做畫面直接改那一組。注意：同一頁第一次指派時才會複製頁面，之後才加進老師那頁的影片不會自動出現在已指派的組別畫板上。你自己按播放時，學生畫面都會跟著播放（不受這個開關影響）。</li><li><b>學生離開畫布提醒</b>：學生切到別的分頁或 app、鎖螢幕時，右上角會跳出「⚠ 學號 ○○ 離開畫布了」，學生名單也會標示；按「🔔 叫他回來」，學生回來時畫面上方會出現紅色提醒，並響鈴、震動約 3 秒；紅色文字會一直留著，直到學生自己點掉。注意：電腦上若是把別的視窗並排開著、畫布仍在畫面上，工具偵測不到。</li><li><b>快速選頁</b>：畫板最下方有一條微透明的小橫槓，滑鼠碰到或手指點一下就會彈出（離開 2 秒自動收摺，也可按 ⌄ 收起）；頁面欄標題的 🔲 可以看全部頁面的縮圖，點一張就跳過去；在裡面可以勾選多頁一起刪除，或按住 ⠿ 拖曳來移動頁面順序（選了多頁就一起移）。展開後有「‹ 頁碼 / 總頁數 ›」和「＋」：左右鍵翻頁、點頁碼輸入數字按 Enter 直接跳頁、「＋」在目前這頁後面立刻加一張空白頁。</li><li><b>結束課程</b>：在上方「🚪 教室入口」的視窗裡。</li><li><b>全選</b>：按 Ctrl+A（Mac 按 ⌘+A）可以選取這一頁所有物件，再用「⋯」選單一起鎖定、複製、刪除。</li><li><b>畫布物件</b>：展開後有<b>全部鎖定</b>（鎖住後不會誤拖物件；用全選後的「⋯」鎖定也算全部鎖定。全部鎖定時按鈕和畫布左上角都會出現 🔒 提示）和<b>圖層</b>（選一個物件後按置頂、上移、下移、置底，或開圖層面板）；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單，要按「編輯抽籤項目」才會顯示輸入框，避免學生盯著看）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示；計時器可拖動、拖右下角縮放，有「＋5～＋30 秒」按鈕，時間到連續響約 6 秒）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布；也能<b>下載「題目範本」</b>用 Excel 編好一次上傳很多題，清單只顯示題號和題目，點「出這題」就送出，還可指定只出給某幾組或某幾位學生）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><p>筆、橡皮擦、圖形、插入、課堂、動作：電腦上滑鼠移上去就會浮出選單，平板和手機按一下展開。頁面欄收起來時，滑鼠碰到左邊的「頁面」小標籤會暫時浮出（不會改變畫板大小），滑鼠離開 3 秒後自動收回；按 📌 可固定打開。</p><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>：展開後可選大小，裡面也有<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>簡報模式的翻頁列</b>也是同樣的小橫槓，碰到或點一下才彈出。</li><li><b>影片（YouTube）給學生</b>：預設學生只看到影片的封面圖，不能自己點播放；選取影片後在物件選單按「學生可以自己點開播放」就開放。<b>重要：</b>要控制學生在自己作業畫布上的影片能不能播放，請在<b>指派作業之前</b>就在自己的頁面設定好（指派時會連同設定複製給各組）；作業已經開始之後，每組有自己的一份畫板，要用「與該組共做」進入那位學生（那一組）的畫面，再在他的影片上開或關。在自己的老師畫布上開關，也會同步到已指派出去、同一頁上同一部影片的各組畫板；如果沒有反應，就進共做畫面直接改那一組。注意：同一頁第一次指派時才會複製頁面，之後才加進老師那頁的影片不會自動出現在已指派的組別畫板上。你自己按播放時，學生畫面都會跟著播放（不受這個開關影響）。</li><li><b>指派多頁</b>：在「📋 任務」勾選多頁時，下方可選兩種方式。<b>輪流分給各組</b>：每組只拿一頁（第 1 組第一頁、第 2 組第二頁…），適合各組做不同題目。<b>每組都拿到全部勾選頁</b>：每組都有這幾頁，可以勾選「學生可以自己換頁」讓學生用畫面下方的 ‹ › 自己換；不勾的話只有老師能換，用任務列的「◀ 上一頁／下一頁 ▶」一鍵讓（勾選的或全部的）組別一起換頁。各頁上寫的內容都會保留。</li><li><b>學生離開畫布提醒</b>：學生切到別的分頁或 app、鎖螢幕時，右上角會跳出「⚠ 學號 ○○ 離開畫布了」，學生名單也會標示；按「🔔 叫他回來」，學生回來時畫面上方會出現紅色提醒，並響鈴、震動約 3 秒；紅色文字會一直留著，直到學生自己點掉。注意：電腦上若是把別的視窗並排開著、畫布仍在畫面上，工具偵測不到。</li><li><b>快速選頁</b>：畫板最下方有一條微透明的小橫槓，滑鼠碰到或手指點一下就會彈出（離開 2 秒自動收摺，也可按 ⌄ 收起）；頁面欄標題的 🔲 可以看全部頁面的縮圖，點一張就跳過去；在裡面可以勾選多頁一起刪除，或按住 ⠿ 拖曳來移動頁面順序（選了多頁就一起移）。展開後有「‹ 頁碼 / 總頁數 ›」和「＋」：左右鍵翻頁、點頁碼輸入數字按 Enter 直接跳頁、「＋」在目前這頁後面立刻加一張空白頁。</li><li><b>結束課程</b>：在上方「🚪 教室入口」的視窗裡。</li><li><b>全選</b>：按 Ctrl+A（Mac 按 ⌘+A）可以選取這一頁所有物件，再用「⋯」選單一起鎖定、複製、刪除。</li><li><b>畫布物件</b>：展開後有<b>全部鎖定</b>（鎖住後不會誤拖物件；用全選後的「⋯」鎖定也算全部鎖定。全部鎖定時按鈕和畫布左上角都會出現 🔒 提示）和<b>圖層</b>（選一個物件後按置頂、上移、下移、置底，或開圖層面板）；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單，要按「編輯抽籤項目」才會顯示輸入框，避免學生盯著看）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示；計時器可拖動、拖右下角縮放，有「＋5～＋30 秒」按鈕，時間到連續響約 6 秒）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布；也能<b>下載「題目範本」</b>用 Excel 編好一次上傳很多題，清單只顯示題號和題目，點「出這題」就送出，還可指定只出給某幾組或某幾位學生）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
@@ -2402,5 +2439,5 @@
   $('b-help').onclick = function () { helpModal('u'); };
 
   idbLoadImgs(function () { idbGet('s', 'S', boot); });
-  window.__wb = { S: function () { return S; }, V: V, propagateSp: propagateSp };
+  window.__wb = { S: function () { return S; }, V: V, propagateSp: propagateSp, assignPages: assignPages, stepAllPages: stepAllPages, liveGroups: liveGroups, tPick: tPick, renderTask: renderTask };
 })();

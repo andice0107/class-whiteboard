@@ -144,6 +144,17 @@
   }
   var NOTE_COLORS = [['#fff3a6', '黃'], ['#ffd6e5', '粉紅'], ['#cfe8ff', '藍'], ['#d4f5d0', '綠'], ['#e6d9ff', '紫'], ['#ffe0c2', '橙']];
   var endAt = null;
+  /* 老師指派多頁時：顯示目前第幾頁；老師開放時學生可以自己換頁 */
+  function pgBar(d) {
+    var bx = document.getElementById('stu-pg');
+    if (!d.pgt || d.pgt < 2) { if (bx) bx.remove(); return; }
+    if (!bx) { bx = document.createElement('div'); bx.id = 'stu-pg'; bx.className = 'stu-pg'; (document.querySelector('.board-host') || document.body).appendChild(bx); }
+    bx.innerHTML = '';
+    function mk(t, f, dis) { var b = document.createElement('button'); b.textContent = t; b.disabled = dis; b.onclick = f; bx.appendChild(b); }
+    if (d.pgf) mk('‹', function () { send({ t: 'goto', d: -1 }); }, d.pgn <= 1);
+    var s = document.createElement('span'); s.textContent = '第 ' + d.pgn + ' / ' + d.pgt + ' 頁' + (d.pgf ? '' : '（老師會帶你換頁）'); bx.appendChild(s);
+    if (d.pgf) mk('›', function () { send({ t: 'goto', d: 1 }); }, d.pgn >= d.pgt);
+  }
   function setMeta(d) {
     cur = d;
     var t = document.querySelector('.stu-title'); if (t) t.textContent = d.title || '';
@@ -157,6 +168,7 @@
     V.setBg(d.bg || '');
     V.setViewport(d.vp || null);
     document.body.classList.toggle('can-draw', can);
+    pgBar(d);
     tick(); renderTools();
   }
   function tick() {
