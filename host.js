@@ -201,7 +201,7 @@
     onContext: function (o, x, y) { if (S.mode === 'show') return; objMenu(o, x, y); },
     onWantSelect: function () { setMode('select'); },
     onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
-    onLockedHint: function () { toast(S.lock ? '🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖' : '🔒 圈到的物件裡有鎖定的，按「⋯」可以一次解除鎖定'); },
+    onLockedHint: function () { toast(S.lock ? '🔒 物件目前全部鎖定，要先到「畫布物件」解除全部鎖定' : '🔒 圈到的物件裡有鎖定的，按「⋯」可以一次解除鎖定'); },
     onMulti: function (n) { if (n) toast('⭕ 圈到 ' + n + ' 個物件：拖曳移動、拉角落等比例縮放、⟳ 旋轉，按「⋯」或右鍵有更多功能'); },
     wheelZoom: true, mergedSelect: true, showHidden: true,
     onLive: function (bid, o) { distribute(bid, { t: 'live', o: o }); },
@@ -316,14 +316,12 @@
     add(btn('tb' + (tool.mode === 'select' || tool.mode === 'lasso' ? ' on' : ''), SEL_IC + '<small>選取 ▾</small>', function () {
       var was = tool.mode === 'select'; setMode('select');
       if (was) return selPanel($('toolbar').querySelector('[data-selb]'));
-      if (S.lock) toast('🔒 物件目前全部鎖定，要先按「全部鎖定」解鎖'); else toast('👆 物件上按住可拖拉；空白處拖曳可圈選；按住 ' + akName(V.addKey) + ' 點物件可以多選（再點一次「選取」可設定）');
+      if (S.lock) toast('🔒 物件目前全部鎖定，要先到「畫布物件」解除全部鎖定'); else toast('👆 物件上按住可拖拉；空白處拖曳可圈選；按住 ' + akName(V.addKey) + ' 點物件可以多選（再點一次「選取」可設定）');
     }), '選取：點物件拖拉、空白處拖曳圈選、按住 ' + akName(V.addKey) + ' 點物件多選'); var sbx = $('toolbar').lastChild; sbx.dataset.selb = 1; sbx.dataset.pop = 1;
     var sb = add(btn('tb' + (tool.mode === 'shape' ? ' on' : ''), '🔷<small>圖形</small>', function () { shapePanel(sb); })); sb.dataset.pop = 1;
     var ib = add(btn('tb', '➕<small>插入 ▾</small>', function () { insertPanel(ib); }), '便利貼、文字、連結、影片、圖片、貼上、背景'); ib.dataset.pop = 1;
-    add(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🔓') + '<small>' + (S.lock ? '全部已鎖' : '全部鎖定') + '</small>', function () {
-      S.lock = !S.lock; save(); V.setLocked(S.lock); renderTools();
-      toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解除全部鎖定');
-    }), '鎖定或解鎖這一頁所有物件（單一物件請按右鍵鎖定）');
+    var ob = add(btn('tb' + (S.lock ? ' on warn' : ''), (S.lock ? '🔒' : '🗂️') + '<small>畫布物件 ▾</small>' + (S.lock ? '<i class="lk-badge">🔒</i>' : ''), function () { objectsPanel(tbAnchor('lock')); }), '畫布物件：全部鎖定／解鎖、圖層（置頂、置底…）；移上來就會展開'); ob.dataset.pop = 1;
+    lockBadge();
     if (tv.kind === 'page') { var zb = add(btn('tb' + (tool.mode === 'zoom' ? ' on' : ''), '🔍<small>放大鏡</small>', function () { setMode('zoom'); zoomPanel($('toolbar').querySelector('[data-zoom]')); }), '快捷鍵：按住 ' + zkName(V.zoomKey) + '＋滑鼠滾輪'); zb.dataset.pop = 1; zb.dataset.zoom = 1; }
     var cb = add(btn('tb', '🎲<small>課堂 ▾</small>', function () { classPanel(cb); }), '隨機點名、抽籤、分組抽籤、倒數計時、隱藏與揭曉'); cb.dataset.pop = 1;
     var ab = add(btn('tb', '🎬<small>動作 ▾</small>', function () { actionPanel(ab); }), '上一步、下一步（滑鼠移上來就會展開；平板按一下）'); ab.dataset.pop = 1; ab.dataset.act = 1;
@@ -335,7 +333,7 @@
     orderTools();
   }
   /* 工具欄順序：預設照下面的排，可以在「🎨 顯示設定」調整；登入 Google 後跟著帳號走 */
-  var TB_DEF = [['pen', '✏️ 筆'], ['colors', '🎨 黑紅藍三色'], ['erase', '🧽 橡皮擦（含清除筆劃）'], ['select', '選取（移動／圈選）'], ['shape', '🔷 圖形'], ['insert', '➕ 插入'], ['lock', '🔓 全部鎖定'], ['zoom', '🔍 放大鏡'], ['class', '🎲 課堂'], ['action', '🎬 動作（上一步／下一步）'], ['clearall', '🗑️ 全清除']];
+  var TB_DEF = [['pen', '✏️ 筆'], ['colors', '🎨 黑紅藍三色'], ['erase', '🧽 橡皮擦（含清除筆劃）'], ['select', '選取（移動／圈選）'], ['shape', '🔷 圖形'], ['insert', '➕ 插入'], ['lock', '🗂️ 畫布物件（全部鎖定、圖層）'], ['zoom', '🔍 放大鏡'], ['class', '🎲 課堂'], ['action', '🎬 動作（上一步／下一步）'], ['clearall', '🗑️ 全清除']];
   var TBO = []; try { TBO = JSON.parse(localStorage.getItem('wb-tborder') || '[]') || []; } catch (e) { TBO = []; }
   function tbOrder() {
     var keys = TB_DEF.map(function (x) { return x[0]; }), out = TBO.filter(function (k) { return keys.indexOf(k) >= 0; });
@@ -347,7 +345,7 @@
     var t = $('toolbar'), byK = {};
     Array.prototype.slice.call(t.children).forEach(function (c) { if (c.dataset.tk) byK[c.dataset.tk] = c; });
     tbOrder().forEach(function (k) { if (byK[k]) t.appendChild(byK[k]); });
-    if (CAN_HOVER) [['pen', penPanel], ['erase', eraserPanel], ['shape', shapePanel], ['insert', insertPanel], ['class', classPanel], ['action', actionPanel]].forEach(function (z) {
+    if (CAN_HOVER) [['pen', penPanel], ['erase', eraserPanel], ['lock', objectsPanel], ['shape', shapePanel], ['insert', insertPanel], ['class', classPanel], ['action', actionPanel]].forEach(function (z) {
       var b = byK[z[0]]; if (!b) return; b.onmouseenter = hoverOpen(z[0], z[1]); b.onmouseleave = hovLeave;
     });
   }
@@ -396,6 +394,31 @@
       var d = btn('btn act-b', '↪️ 下一步', function () { V.redo(); renderTools(); actionPanel(ab_()); });
       u.disabled = !V.canUndo(); d.disabled = !V.canRedo();
       r.appendChild(u); r.appendChild(d); p.appendChild(r);
+    });
+  }
+  function lockBadge() {
+    var host = $('board-host'), b = $('lock-badge');
+    if (!b) { b = el('div', 'lock-badge'); b.id = 'lock-badge'; b.textContent = '🔒 物件已全部鎖定，無法操作'; host.appendChild(b); }
+    b.hidden = !S.lock;
+  }
+  function objectsPanel(anchor) {
+    openPop(anchor, function (p) {
+      p.classList.add('objmenu');
+      p.appendChild(el('div', 'pop-h', '🗂️ 畫布物件'));
+      p.appendChild(btn('mi', S.lock ? '🔓 解除全部鎖定<br><small>目前所有物件都鎖住了</small>' : '🔒 全部鎖定<br><small>鎖住後不會誤拖物件</small>', function () {
+        S.lock = !S.lock; save(); V.setLocked(S.lock); renderTools();
+        toast(S.lock ? '🔒 已鎖定所有物件，不會被不小心移動' : '🔓 已解除全部鎖定');
+        objectsPanel(tbAnchor('lock'));
+      }));
+      p.appendChild(el('div', 'pop-l', '圖層（先在畫布上選一個物件）'));
+      var ids = (V.multi && V.multi.length ? V.multi : V.sel ? [V.sel] : []).filter(function (id) { var o = V.find(id); return o && o.k !== 's'; });
+      var r = el('div', 'pop-row');
+      [['⤒ 置頂', 'front'], ['↑ 上移', 'up'], ['↓ 下移', 'down'], ['⤓ 置底', 'back']].forEach(function (z) {
+        var b = btn('btn sm', z[0], function () { V.reorder(ids, z[1]); renderTools(); objectsPanel(tbAnchor('lock')); }); b.disabled = !ids.length || S.lock; r.appendChild(b);
+      });
+      p.appendChild(r);
+      if (!ids.length) p.appendChild(el('p', 'hint', '目前沒有選取物件'));
+      p.appendChild(btn('mi', '🗂 開啟圖層面板<br><small>列出這一頁所有物件，可以點選、調順序</small>', function () { closePop(); if (!layerBox) layersPanel(); }));
     });
   }
   function eraserPanel(anchor) {
@@ -906,7 +929,7 @@
   /* ---------- 模式與作業計時 ---------- */
   function fmt(ms) { var s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
   function renderMode() {
-    [].forEach.call($('mode-seg').children, function (b) { b.classList.toggle('on', b.dataset.m === S.mode); });
+    $('mode-btn').textContent = '模式：' + { present: '上課', show: '簡報', work: '作業' }[S.mode] + ' ▾';
     document.body.classList.toggle('mode-work', S.mode === 'work');
     document.body.classList.toggle('mode-show', S.mode === 'show');
     V.setEditable(S.mode !== 'show');
@@ -918,11 +941,12 @@
       tm.appendChild(el('span', 'clock', S.workEnd ? '⏱ ' + fmt(S.workEnd - Date.now()) : '⏱ 不限時'));
       if (S.workEnd) tm.appendChild(btn('btn sm', '＋1分', function () { S.workEnd += 60000; save(); refreshAll(); renderMode(); }));
       if (S.cast) tm.appendChild(btn('btn sm primary', '▶ 繼續作業', function () { stopCast(); })).title = '停止分享畫面，讓學生回到自己的作業';
-      tm.appendChild(btn('btn sm danger', '結束作業', function () { endWork(false); }));
+      if (S.workEnd) tm.appendChild(btn('btn sm', '暫停', function () { endWork(false); })).title = '先暫停倒數，之後按「繼續」從剩下的時間接著做';
+      tm.appendChild(btn('btn sm danger', '結束', function () { endWork(false); S.workPaused = false; S.workLeft = null; save(); renderMode(); })).title = '直接結束作業';
     } else if (canResume()) {
       tm.hidden = false; tm.className = 'timer paused';
       tm.appendChild(el('span', 'clock', '⏸ 作業暫停中' + (S.workLeft ? '（還剩 ' + fmt(S.workLeft) + '）' : '')));
-      tm.appendChild(btn('btn sm primary', '▶ 繼續作業', resumeWork)).title = '讓學生回到剛剛的作業畫板繼續作答';
+      tm.appendChild(btn('btn sm primary', '繼續', resumeWork)).title = '讓學生回到剛剛的作業畫板繼續作答';
     } else tm.hidden = true;
   }
   setInterval(function () {
@@ -979,11 +1003,22 @@
     save(); V.setViewport(null); renderMode(); refreshAll(); renderCtx(); renderPages(); renderTask();
     toast('✏️ 作業模式開始' + (mins ? '，' + mins + ' 分鐘後自動回到上課模式' : '（不限時）'));
   }
-  $('mode-seg').onclick = function (e) {
-    var m = e.target.closest('button'); if (!m) return; m = m.dataset.m;
-    if (m === S.mode) return;
-    if (m === 'work') workBox(); else endWork(false, m);
-  };
+  function modePanel(anchor) {
+    openPop(anchor, function (p) {
+      p.appendChild(el('div', 'pop-h', '模式'));
+      [['present', '🧑‍🏫 上課', '老師可以用所有工具，學生只能看'], ['show', '📽️ 簡報', '像 PPT 放映：只能翻頁、播放影片'], ['work', '✏️ 作業', '學生在指派的畫板上作答']].forEach(function (z) {
+        p.appendChild(btn('mi' + (S.mode === z[0] ? ' on' : ''), (S.mode === z[0] ? '✓ ' : '') + z[1] + '<br><small>' + z[2] + '</small>', function () {
+          closePop(); if (z[0] === S.mode) return;
+          if (z[0] === 'work') workBox(); else endWork(false, z[0]);
+        }));
+      });
+    });
+  }
+  (function () {
+    var mb = $('mode-btn'); mb.dataset.pop = 1;
+    mb.onclick = function () { modePanel(mb); };
+    if (CAN_HOVER) { mb.onmouseenter = function () { clearTimeout(actT); clearTimeout(hovT); hovT = setTimeout(function () { if (pop && pop._hk === 'mode') return; modePanel(mb); markHov('mode'); }, 140); }; mb.onmouseleave = hovLeave; }
+  })();
   function workBox() {
     var any = liveGroups().some(function (g) { return S.groups[g].cur; });
     modal(function (box) {
@@ -2184,8 +2219,8 @@
   }
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
-    '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><p>筆、橡皮擦、圖形、插入、課堂、動作：電腦上滑鼠移上去就會浮出選單，平板和手機按一下展開。頁面欄收起來時，滑鼠碰到左邊的「頁面」小標籤會暫時浮出（不會改變畫板大小），滑鼠離開 3 秒後自動收回；按 📌 可固定打開。</p><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>：展開後可選大小，裡面也有<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單，要按「編輯抽籤項目」才會顯示輸入框，避免學生盯著看）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示；計時器可拖動、拖右下角縮放，有「＋5～＋30 秒」按鈕，時間到連續響約 6 秒）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布；也能<b>下載「題目範本」</b>用 Excel 編好一次上傳很多題，清單只顯示題號和題目，點「出這題」就送出，還可指定只出給某幾組或某幾位學生）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
+    '<h4>🔀 三種模式（上方中間的「模式：上課」，滑鼠移上去或點一下就能切換）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。作業中有「暫停」（倒數先停住）和「結束」兩個鍵，暫停後只剩「繼續」，按了從剩下的時間接著倒數。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><p>筆、橡皮擦、圖形、插入、課堂、動作：電腦上滑鼠移上去就會浮出選單，平板和手機按一下展開。頁面欄收起來時，滑鼠碰到左邊的「頁面」小標籤會暫時浮出（不會改變畫板大小），滑鼠離開 3 秒後自動收回；按 📌 可固定打開。</p><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>：展開後可選大小，裡面也有<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>畫布物件</b>：展開後有<b>全部鎖定</b>（鎖住後不會誤拖物件，全部鎖定時按鈕和畫布左上角都會出現 🔒 提示）和<b>圖層</b>（選一個物件後按置頂、上移、下移、置底，或開圖層面板）；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單，要按「編輯抽籤項目」才會顯示輸入框，避免學生盯著看）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示；計時器可拖動、拖右下角縮放，有「＋5～＋30 秒」按鈕，時間到連續響約 6 秒）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布；也能<b>下載「題目範本」</b>用 Excel 編好一次上傳很多題，清單只顯示題號和題目，點「出這題」就送出，還可指定只出給某幾組或某幾位學生）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
