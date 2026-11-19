@@ -558,6 +558,7 @@
       r = el('div', 'pop-row');
       r.appendChild(btn('btn', '🖼️ 選擇圖片檔', function () { closePop(); $('file-in').click(); }));
       r.appendChild(btn('btn', '📋 貼上（Ctrl+V）', function () { closePop(); pasteButton(); }));
+      r.appendChild(btn('btn', '📄 匯入 PDF／多張圖片成頁面', function () { closePop(); $('pdf-in').click(); }));
       p.appendChild(r);
       p.appendChild(el('div', 'pop-l tag t5', '📐 教具（放上去可以拖、縮放、旋轉）'));
       r = el('div', 'pop-row');
@@ -754,6 +755,7 @@
       toast('剪貼簿裡沒有圖片或文字');
     }).catch(function () { toast('沒有權限讀取剪貼簿，請改按 Ctrl+V（Mac 按 ⌘+V）'); });
   }
+  $('pdf-in').onchange = function () { importPages(this.files); this.value = ''; };
   $('file-in').onchange = function () { [].forEach.call(this.files, addImageFile); this.value = ''; };
   $('board-host').addEventListener('dragover', function (e) { e.preventDefault(); });
   $('board-host').addEventListener('drop', function (e) { e.preventDefault(); [].forEach.call(e.dataTransfer.files || [], addImageFile); });
@@ -1751,6 +1753,7 @@
       var gs = liveGroups();
       if (!gs.length) { box.appendChild(el('p', 'empty', '還沒有學生加入。')); return; }
       box.appendChild(el('p', 'hint', '點縮圖就會進到那個人（組）的畫板，可以直接和他們一起寫；進去後上方有 ◀ ▶ 可以逐一翻看。要有指派畫板（「📋 任務」）才看得到內容。'));
+      var picks = [], cmpBtn = btn('btn primary', '🆚 並排比較選取的（0）', function () { compareModal(picks.slice()); }); cmpBtn.disabled = true; box.appendChild(cmpBtn);
       var grid = el('div', 'ov-grid'); box.appendChild(grid);
       gs.forEach(function (gid) {
         var g = S.groups[gid], card = el('button', 'ov-card'), cv = document.createElement('canvas'); cv.width = 320; cv.height = 180;
@@ -1763,6 +1766,7 @@
         card.appendChild(cv);
         var on = members(gid).some(function (s) { return online[s]; });
         card.appendChild(el('div', 'ov-l', '<span class="dot ' + (on ? 'online' : 'offline') + '"></span> ' + esc(groupLabel(gid)) + ' <small>' + info + '</small>'));
+        var pk = el('label', 'ov-pick'); pk.innerHTML = '<input type="checkbox"> 比較'; pk.onclick = function (e) { e.stopPropagation(); }; pk.firstChild.onchange = function () { if (this.checked) picks.push(gid); else picks.splice(picks.indexOf(gid), 1); cmpBtn.disabled = picks.length < 2 || picks.length > 6; cmpBtn.textContent = '🆚 並排比較選取的（' + picks.length + '）'; }; card.appendChild(pk);
         card.onclick = function () { if (!g.cur) return toast('這位（組）還沒有指派畫板，先到「📋 任務」指派頁面'); tv = { kind: 'group', gid: gid }; closeModal(); showBoard(); };
         grid.appendChild(card);
       });
@@ -1771,6 +1775,92 @@
   function stepGroup(d) {
     var gs = liveGroups().filter(function (g) { return S.groups[g].cur; }); if (!gs.length) return;
     var i = gs.indexOf(tv.gid); i = (i + d + gs.length) % gs.length; tv = { kind: 'group', gid: gs[i] }; showBoard();
+  }
+  /* ---------- 匯入 PDF／多張圖片：每一頁變成一頁畫板（可以直接在上面寫） ---------- */
+  function loadPdfJs() {
+    return new Promise(function (ok, bad) {
+      if (window.pdfjsLib) return ok(window.pdfjsLib);
+      var s = document.createElement('script'); s.src = 'vendor/pdfjs/pdf.min.js';
+      s.onload = function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js'; ok(window.pdfjsLib); };
+      s.onerror = function () { bad(new Error('pdf.js 載入失敗')); }; document.head.appendChild(s);
+    });
+  }
+  function canvasJpeg(cv) {
+    var q = 0.88, d = cv.toDataURL('image/jpeg', q);
+    while (d.length > 450000 && q > 0.4) { q -= 0.1; d = cv.toDataURL('image/jpeg', q); }
+    return d;
+  }
+  function pageObjFromCanvas(cv) {
+    var id = 'im' + WB.uid(), d = canvasJpeg(cv); WB.setImg(id, d); idbPut('i', id, d);
+    var f = Math.min(WB.W / cv.width, WB.H / cv.height), ww = Math.round(cv.width * f), hh = Math.round(cv.height * f);
+    return { id: WB.uid(), k: 'i', by: 'T', x: Math.round((WB.W - ww) / 2), y: Math.round((WB.H - hh) / 2), w: ww, h: hh, r: 0, fx: false, src: id, lk: true };
+  }
+  function readImageCanvas(file) {
+    return new Promise(function (ok, bad) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var im = new Image();
+        im.onload = function () {
+          var k = Math.min(1, 1600 / Math.max(im.width, im.height)), cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+          var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(im, 0, 0, cv.width, cv.height); ok(cv);
+        };
+        im.onerror = function () { bad(new Error('圖片讀不出來')); }; im.src = fr.result;
+      };
+      fr.onerror = function () { bad(new Error('讀檔失敗')); }; fr.readAsDataURL(file);
+    });
+  }
+  function importPages(files) {
+    files = [].slice.call(files); if (!files.length) return;
+    var made = [], MAXP = 40;
+    function stop(e) { toast('匯入沒有完成：' + (e && e.message ? e.message : '請換一個檔案再試')); }
+    function finish() {
+      if (!made.length) return;
+      var after = S.cur; made.forEach(function (o) { after = newPage(after, [o]).id; });
+      S.cur = made.length ? S.pages[pageIdx(after) - made.length + 1].id : S.cur; save(); refreshAll(); showBoard();
+      toast('✅ 已匯入 ' + made.length + ' 頁，放在目前這頁的後面（圖片已鎖定，要移動請在物件上按右鍵解鎖）');
+    }
+    var chain = Promise.resolve();
+    files.forEach(function (f) {
+      chain = chain.then(function () {
+        if (made.length >= MAXP) return;
+        if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
+          toast('正在讀取 PDF…');
+          return loadPdfJs().then(function (lib) { return f.arrayBuffer().then(function (buf) { return lib.getDocument({ data: buf }).promise; }); }).then(function (doc) {
+            var n = Math.min(doc.numPages, MAXP - made.length), p = Promise.resolve();
+            if (doc.numPages > n) toast('PDF 有 ' + doc.numPages + ' 頁，一次最多匯入 ' + MAXP + ' 頁，先匯入前 ' + n + ' 頁');
+            for (var i = 1; i <= n; i++) (function (i) {
+              p = p.then(function () { return doc.getPage(i); }).then(function (pg) {
+                var vp0 = pg.getViewport({ scale: 1 }), sc = 1600 / Math.max(vp0.width, vp0.height), vp = pg.getViewport({ scale: sc });
+                var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+                var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+                toast('正在轉換 PDF 第 ' + i + ' / ' + n + ' 頁…');
+                return pg.render({ canvasContext: cx, viewport: vp }).promise.then(function () { made.push(pageObjFromCanvas(cv)); });
+              });
+            })(i);
+            return p;
+          });
+        }
+        if (/^image\//.test(f.type)) return readImageCanvas(f).then(function (cv) { made.push(pageObjFromCanvas(cv)); });
+        toast('「' + f.name + '」不是 PDF 或圖片，已略過（簡報請先另存成 PDF）');
+      });
+    });
+    chain.then(finish, function (e) { stop(e); finish(); });
+  }
+  /* ---------- 並排比較幾位學生的畫板 ---------- */
+  var cmpTimer = null;
+  function compareModal(gids) {
+    modal(function (box) {
+      box.classList.add('cmp-box');
+      var hd = el('div', 'help-top'); hd.appendChild(el('h3', '', '🆚 並排比較（' + gids.length + ' 個）')); hd.appendChild(btn('btn', '✕ 關閉', function () { clearInterval(cmpTimer); closeModal(); })); box.appendChild(hd);
+      box.appendChild(el('p', 'hint', '畫面會隨學生書寫自動更新。要進去看或一起寫，請先關閉，再到「作業一覽」點那一個。'));
+      var grid = el('div', 'cmp-grid cols' + (gids.length <= 2 ? gids.length : gids.length <= 4 ? 2 : 3)); box.appendChild(grid);
+      var cvs = gids.map(function (gid) { var c = el('div', 'cmp-cell'), cv = document.createElement('canvas'); cv.width = 800; cv.height = 450; c.appendChild(cv); c.appendChild(el('div', 'ov-l', esc(groupLabel(gid)))); grid.appendChild(c); return cv; });
+      function draw() {
+        if ($('modal').hidden || !$('modal-box').classList.contains('cmp-box')) { clearInterval(cmpTimer); return; }
+        gids.forEach(function (gid, i) { var g = S.groups[gid], objs = g && g.cur ? objsOf('G:' + gid) : null, cx = cvs[i].getContext('2d'); if (objs) WB.render(cx, objs, 800 / 1600, '#fff', true); else { cx.fillStyle = '#eef1f7'; cx.fillRect(0, 0, 800, 450); } });
+      }
+      draw(); clearInterval(cmpTimer); cmpTimer = setInterval(draw, 1500);
+    });
   }
   /* ---------- ❓ 如何使用（給使用者／給AI） ---------- */
   var UI = {}; try { UI = JSON.parse(localStorage.getItem('wb-ui') || '{}') || {}; } catch (e) { UI = {}; }
@@ -1868,7 +1958,7 @@
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
     '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、<b>教具</b>（直尺、量角器、數線、時鐘；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、數線、時鐘；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
