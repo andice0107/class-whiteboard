@@ -505,3 +505,24 @@ body.swap .layer-panel{right:auto;left:84px}
 .lay-row .btn.sm{padding:4px 7px}
 body.host.dark .layer-panel{background:#2a3144;color:var(--ink)}
 body.host.dark .lay-row.on{background:#2a3764}
+
+/* 頁面欄：滑鼠碰到時浮出（疊在畫板上，不改變畫板尺寸） */
+.host-main{position:relative}
+body.pages-closed.pages-peek .pages{display:flex;position:absolute;left:0;top:0;bottom:0;z-index:40;box-shadow:4px 0 18px rgba(0,0,0,.25);background:var(--card,#fff);overflow:auto}
+body.swap.pages-closed.pages-peek .pages{left:auto;right:0;box-shadow:-4px 0 18px rgba(0,0,0,.25)}
+
+/* 倒數計時：可拖動、縮放、加秒數 */
+.cd-host{left:0;top:64px;transform-origin:top left;flex-direction:column;border-radius:26px;padding:8px 18px 10px;gap:6px;cursor:move;touch-action:none;user-select:none;align-items:stretch}
+.cd-host .cd-r1{display:flex;align-items:center;gap:10px;justify-content:center}
+.cd-host .cd-r2{display:flex;align-items:center;gap:5px;justify-content:center;font-size:13px;color:#667}
+.cd-host .cd-add{width:auto;height:30px;font-size:14px;padding:0 9px;border-radius:999px;background:#e7f0ff;color:#2b4acb}
+.cd-rs{position:absolute;right:6px;bottom:2px;cursor:nwse-resize;font-size:14px;color:#889;line-height:1}
+
+/* 題庫 */
+.q-tgt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+.q-bank{border:2px dashed var(--line);border-radius:12px;padding:8px;margin:8px 0}
+.q-list{max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.q-row{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:8px;background:#f4f6fb}
+.q-no{font-weight:800;color:#364fc7;white-space:nowrap}
+.q-q{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.host.dark .q-row{background:#2a3144}

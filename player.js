@@ -202,7 +202,12 @@
     var l = cdS.paused ? cdS.left : Math.max(0, cdS.end - Date.now()), s = Math.ceil(l / 1000);
     cdEl.textContent = l <= 0 ? '⏰ 時間到！' : '⏱ ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2) + (cdS.paused ? '（暫停）' : '');
     cdEl.classList.toggle('hurry', l > 0 && l <= 10000); cdEl.classList.toggle('done', l <= 0);
-    if (l <= 0 && !cdFired && !cdS.paused) { cdFired = true; try { var AC = window.AudioContext || window.webkitAudioContext, c = new AC(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.2, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.8); o.start(); o.stop(c.currentTime + 0.85); } catch (e) {} }
+    if (l <= 0 && !cdFired && !cdS.paused) {
+      cdFired = true; var k = 0, bt = setInterval(function () {
+        try { var AC = window.AudioContext || window.webkitAudioContext, c = new AC(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = k % 2 ? 660 : 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.25, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.3); o.start(); o.stop(c.currentTime + 0.32); setTimeout(function () { try { c.close(); } catch (e) {} }, 600); } catch (e) {}
+        if (++k >= 14 || !cdS || cdS.paused || Math.max(0, cdS.end - Date.now()) > 0) clearInterval(bt);
+      }, 400);
+    }
   }
   setInterval(cdTick, 250);
   setInterval(tick, 500);

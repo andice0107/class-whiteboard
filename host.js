@@ -287,7 +287,10 @@
   function closePop() { if (pop) { pop.remove(); pop = null; } }
   document.addEventListener('pointerdown', function (e) { if (pop && !pop.contains(e.target) && !e.target.closest('[data-pop]')) closePop(); }, true);
   function openPop(anchor, build) {
+    var wasHov = pop && pop.classList.contains('hov') ? pop._hk : null;
+    if (anchor && !anchor.isConnected && anchor.dataset && anchor.dataset.tk) anchor = tbAnchor(anchor.dataset.tk) || anchor;
     closePop(); pop = el('div', 'pop'); build(pop); document.body.appendChild(pop);
+    if (wasHov && CAN_HOVER) markHov(wasHov);
     var r = anchor.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight, x, y;
     if (anchor.closest('.toolbar')) { x = r.left > innerWidth / 2 ? r.left - pw - 10 : r.right + 10; y = r.top + r.height / 2 - ph / 2; }
     else { x = r.left + r.width / 2 - pw / 2; y = r.top - ph - 8; if (y < 8) y = r.bottom + 8; }
@@ -301,18 +304,15 @@
   }
   function renderTools() {
     var t = $('toolbar'); t.innerHTML = '';
-    function add(b, title) { if (title) b.title = title; t.appendChild(b); return b; }
+    var TKS = ['swap'].concat(TB_DEF.map(function (x) { return x[0]; }).filter(function (k) { return k !== 'zoom' || tv.kind === 'page'; })), tki = 0;
+    function add(b, title) { if (title) b.title = title; b.dataset.tk = TKS[tki++]; t.appendChild(b); return b; }
     var sw = add(btn('tb-swap', '⇄', function () { setSwap(!document.body.classList.contains('swap')); }), '工具欄和頁面欄左右互換');
     var pk = PENS.filter(function (x) { return x[0] === (tool.pen || ''); })[0] || PENS[0];
     var pb = add(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '<span class="pen-ic" style="--c:' + tool.color + '">' + pk[1] + '</span><small>' + pk[2] + ' ▾</small>', function () { if (tool.mode !== 'pen') setMode('pen'); penPanel(pb); }), '點一下選筆種、顏色、粗細'); pb.dataset.pop = 1;
     var cs = el('div', 'tcell colors three');
     COLORS.slice(0, 3).forEach(function (c) { var b = btn('sw' + (tool.mode === 'pen' && tool.color === c ? ' on' : ''), '', function () { tool.color = c; if (tool.pen === 'lz' || tool.pen === 'hl') tool.pen = ''; setMode('pen'); }); b.style.background = c; b.title = { '#111111': '黑', '#e53935': '紅', '#1e63d6': '藍' }[c]; cs.appendChild(b); });
-    t.appendChild(cs);
-    add(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { setMode('erase'); }));
-    add(btn('tb', '🧹<small>清除筆劃</small>', function () {
-      if (!V.objs.some(function (o) { return o.k === 's'; })) return toast('這一頁沒有筆劃');
-      V.clear(true); renderTools(); toast('🧹 已清除這一頁所有筆劃（按「上一步」可以復原）');
-    }), '只清除筆劃，圖片、文字、圖形會留著');
+    add(cs);
+    var eb = add(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦 ▾</small>', function () { setMode('erase'); eraserPanel(tbAnchor('erase')); }), '橡皮擦（含清除筆劃）：移上來或按一下展開'); eb.dataset.pop = 1;
     add(btn('tb' + (tool.mode === 'select' || tool.mode === 'lasso' ? ' on' : ''), SEL_IC + '<small>選取 ▾</small>', function () {
       var was = tool.mode === 'select'; setMode('select');
       if (was) return selPanel($('toolbar').querySelector('[data-selb]'));
@@ -328,7 +328,6 @@
     var cb = add(btn('tb', '🎲<small>課堂 ▾</small>', function () { classPanel(cb); }), '隨機點名、抽籤、分組抽籤、倒數計時、隱藏與揭曉'); cb.dataset.pop = 1;
     var ab = add(btn('tb', '🎬<small>動作 ▾</small>', function () { actionPanel(ab); }), '上一步、下一步（滑鼠移上來就會展開；平板按一下）'); ab.dataset.pop = 1; ab.dataset.act = 1;
     ab.disabled = false; ab.classList.toggle('dim', !V.canUndo() && !V.canRedo());
-    if (CAN_HOVER) { ab.onmouseenter = function () { actionPanel(ab, true); }; ab.onmouseleave = function () { actionLeave(); }; }
     add(btn('tb danger', '🗑️<small>全清除</small>', function () {
       if (!V.objs.length) return toast('這一頁已經是空白的');
       confirmBox('要把這一頁全部清空嗎？（筆劃、圖片、文字、圖形、便利貼、影片都會清掉；按「上一步」可以復原）', '全部清除', function () { V.clearAll(); renderTools(); });
@@ -336,19 +335,21 @@
     orderTools();
   }
   /* 工具欄順序：預設照下面的排，可以在「🎨 顯示設定」調整；登入 Google 後跟著帳號走 */
-  var TB_DEF = [['pen', '✏️ 筆'], ['colors', '🎨 黑紅藍三色'], ['erase', '🧽 橡皮擦'], ['clearpen', '🧹 清除筆劃'], ['select', '選取（移動／圈選）'], ['shape', '🔷 圖形'], ['insert', '➕ 插入'], ['lock', '🔓 全部鎖定'], ['zoom', '🔍 放大鏡'], ['class', '🎲 課堂'], ['action', '🎬 動作（上一步／下一步）'], ['clearall', '🗑️ 全清除']];
+  var TB_DEF = [['pen', '✏️ 筆'], ['colors', '🎨 黑紅藍三色'], ['erase', '🧽 橡皮擦（含清除筆劃）'], ['select', '選取（移動／圈選）'], ['shape', '🔷 圖形'], ['insert', '➕ 插入'], ['lock', '🔓 全部鎖定'], ['zoom', '🔍 放大鏡'], ['class', '🎲 課堂'], ['action', '🎬 動作（上一步／下一步）'], ['clearall', '🗑️ 全清除']];
   var TBO = []; try { TBO = JSON.parse(localStorage.getItem('wb-tborder') || '[]') || []; } catch (e) { TBO = []; }
   function tbOrder() {
     var keys = TB_DEF.map(function (x) { return x[0]; }), out = TBO.filter(function (k) { return keys.indexOf(k) >= 0; });
     keys.forEach(function (k, i) { if (out.indexOf(k) < 0) { var prev = i ? out.indexOf(keys[i - 1]) : -1; out.splice(prev + 1, 0, k); } });
     return out;
   }
+  function tbAnchor(k) { return $('toolbar').querySelector('[data-tk="' + k + '"]'); }
   function orderTools() {
-    var t = $('toolbar'), ch = Array.prototype.slice.call(t.children), ks = TB_DEF.map(function (x) { return x[0]; }).filter(function (k) { return k !== 'zoom' || tv.kind === 'page'; });
-    var rest = ch.filter(function (c) { return !c.classList.contains('tb-swap'); }); /* swap 鍵永遠在最上面 */
-    if (rest.length !== ks.length) return;
-    var byK = {}; rest.forEach(function (c, i) { byK[ks[i]] = c; });
+    var t = $('toolbar'), byK = {};
+    Array.prototype.slice.call(t.children).forEach(function (c) { if (c.dataset.tk) byK[c.dataset.tk] = c; });
     tbOrder().forEach(function (k) { if (byK[k]) t.appendChild(byK[k]); });
+    if (CAN_HOVER) [['pen', penPanel], ['erase', eraserPanel], ['shape', shapePanel], ['insert', insertPanel], ['class', classPanel], ['action', actionPanel]].forEach(function (z) {
+      var b = byK[z[0]]; if (!b) return; b.onmouseenter = hoverOpen(z[0], z[1]); b.onmouseleave = hovLeave;
+    });
   }
   function savePrefs() {
     try { localStorage.setItem('wb-tborder', JSON.stringify(TBO)); } catch (e) {}
@@ -377,11 +378,17 @@
     wrap.appendChild(btn('btn', '↺ 恢復預設順序', function () { TBO = []; savePrefs(); renderTools(); orderPanel(wrap); }));
   }
   var CAN_HOVER = !!(window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)').matches);
-  var actT = null;
-  function actionLeave() { clearTimeout(actT); actT = setTimeout(function () { if (pop && pop.classList.contains('act-pop')) closePop(); }, 350); }
-  function actionPanel(anchor, hover) {
-    clearTimeout(actT);
-    if (hover && pop && pop.classList.contains('act-pop')) return;
+  var actT = null, hovT = null;
+  function markHov(k) { if (!pop) return; pop.classList.add('hov'); pop._hk = k; pop.onmouseenter = function () { clearTimeout(actT); }; pop.onmouseleave = hovLeave; }
+  $('toolbar').addEventListener('pointerdown', function () { if (pop && pop.classList.contains('hov')) { pop.classList.remove('hov'); pop._hk = null; } }, true);
+  function hovLeave() { clearTimeout(hovT); clearTimeout(actT); actT = setTimeout(function () { if (pop && pop.classList.contains('hov')) closePop(); }, 350); }
+  function hoverOpen(key, fn) {
+    return function () {
+      clearTimeout(actT); clearTimeout(hovT);
+      hovT = setTimeout(function () { var a = tbAnchor(key); if (!a || (pop && pop._hk === key)) return; fn(a); markHov(key); }, 140);
+    };
+  }
+  function actionPanel(anchor) {
     openPop(anchor, function (p) {
       p.classList.add('act-pop');
       var r = el('div', 'act-row');
@@ -389,7 +396,21 @@
       var d = btn('btn act-b', '↪️ 下一步', function () { V.redo(); renderTools(); actionPanel(ab_()); });
       u.disabled = !V.canUndo(); d.disabled = !V.canRedo();
       r.appendChild(u); r.appendChild(d); p.appendChild(r);
-      if (CAN_HOVER) { p.onmouseenter = function () { clearTimeout(actT); }; p.onmouseleave = actionLeave; }
+    });
+  }
+  function eraserPanel(anchor) {
+    openPop(anchor, function (p) {
+      p.appendChild(el('div', 'pop-h', '🧽 橡皮擦'));
+      p.appendChild(el('div', 'pop-l', '大小（按一下就會切換成橡皮擦）'));
+      var r = el('div', 'pop-row');
+      [[10, '小'], [18, '中'], [32, '大'], [56, '特大']].forEach(function (z) { r.appendChild(btn('btn sm' + ((tool.eraser || 18) === z[0] && tool.mode === 'erase' ? ' primary' : ''), z[1], function () { tool.eraser = z[0]; setMode('erase'); eraserPanel(tbAnchor('erase')); })); });
+      p.appendChild(r);
+      p.appendChild(el('div', 'pop-l', '整頁清除'));
+      p.appendChild(btn('mi', '🧹 清除這一頁所有筆劃<br><small>圖片、文字、圖形、便利貼會留著；按「上一步」可以復原</small>', function () {
+        closePop();
+        if (!V.objs.some(function (o) { return o.k === 's'; })) return toast('這一頁沒有筆劃');
+        V.clear(true); renderTools(); toast('🧹 已清除這一頁所有筆劃（按「上一步」可以復原）');
+      }));
     });
   }
   function ab_() { return $('toolbar').querySelector('[data-act]'); }
@@ -794,15 +815,23 @@
   WB.onImg(function () { S.pages.forEach(function (p) { boardChanged('P:' + p.id); }); for (var g in taskThumbs) boardChanged('G:' + g); });
 
   /* ---------- 頁面欄（可收合，每頁有 ⋯ 選單） ---------- */
-  var thumbs = {};
+  var thumbs = {}, pgPeek = false, pgT = null;
+  function pgPeekOn() { clearTimeout(pgT); if (S.pagesOpen || pgPeek) return; pgPeek = true; renderPages(); }
+  function pgPeekLeave() { clearTimeout(pgT); if (!pgPeek) return; pgT = setTimeout(function () { pgPeek = false; renderPages(); }, 3000); }
+  function pgPeekWire() {
+    ['pages', 'pages-open'].forEach(function (id) { var e = $(id); e.addEventListener('mouseenter', function () { if (CAN_HOVER) pgPeekOn(); }); e.addEventListener('mouseleave', function () { if (CAN_HOVER) pgPeekLeave(); }); });
+  }
   function renderPages() {
     var box = $('pages'); box.innerHTML = '';
+    if (S.pagesOpen) pgPeek = false;
     document.body.classList.toggle('pages-closed', !S.pagesOpen);
+    document.body.classList.toggle('pages-peek', !S.pagesOpen && pgPeek);
     $('pages-open').hidden = !!S.pagesOpen;
-    if (!S.pagesOpen) { V.refit(); return; }
+    if (!S.pagesOpen && !pgPeek) { V.refit(); return; }
     var h = el('div', 'pages-h'); h.appendChild(el('span', '', '畫板頁面（' + S.pages.length + '）'));
     h.appendChild(btn('ic swap-b', '⇄', function () { setSwap(!document.body.classList.contains('swap')); })).title = '頁面欄和工具欄左右互換';
-    h.appendChild(btn('ic', document.body.classList.contains('swap') ? '▶' : '◀', function () { S.pagesOpen = false; save(); renderPages(); setTimeout(V.refit, 50); })).title = '收起頁面欄';
+    if (pgPeek && !S.pagesOpen) h.appendChild(btn('ic', '📌', function () { S.pagesOpen = true; save(); renderPages(); setTimeout(V.refit, 50); })).title = '固定打開頁面欄（不會自動收起）';
+    else h.appendChild(btn('ic', document.body.classList.contains('swap') ? '▶' : '◀', function () { S.pagesOpen = false; pgPeek = false; save(); renderPages(); setTimeout(V.refit, 50); })).title = '收起頁面欄';
     box.appendChild(h);
     var list = el('div', 'pg-list');
     S.pages.forEach(function (p, i) {
@@ -825,6 +854,7 @@
   }
   function setSwap(b) { document.body.classList.toggle('swap', b); try { localStorage.setItem('wb-swap', b ? '1' : ''); } catch (e) {} $('pages-open').firstChild.textContent = b ? '◀' : '▶'; renderPages(); closePop(); setTimeout(V.refit, 50); toast(b ? '⇄ 頁面欄在右邊、工具欄在左邊' : '⇄ 頁面欄在左邊、工具欄在右邊'); }
   try { if (localStorage.getItem('wb-swap')) { document.body.classList.add('swap'); $('pages-open').firstChild.textContent = '◀'; } } catch (e) {}
+  pgPeekWire();
   $('pages-open').onclick = function () { S.pagesOpen = true; save(); renderPages(); setTimeout(V.refit, 50); };
   function newPage(after, objs, bg) {
     var np = { id: WB.uid(), objs: objs || [], bg: bg || '' }, idx = pageIdx(after);
@@ -1574,8 +1604,10 @@
       var optNo = true, optOnline = true, ta = null;
       if (!isStu) {
         var saved = ''; try { saved = localStorage.getItem('wb-lottery') || ''; } catch (e) {}
-        box.appendChild(el('p', 'hint', '一行一個項目（可以是名字、題號、小組…）：'));
-        ta = el('textarea', 'help-ta'); ta.style.height = '110px'; ta.value = saved; ta.placeholder = '例如：\n第1題\n第2題\n第3題'; box.appendChild(ta);
+        var eb2 = btn('btn', '✏️ 編輯抽籤項目（按一下才會顯示）', function () { ta.hidden = !ta.hidden; hp.hidden = ta.hidden; eb2.textContent = ta.hidden ? '✏️ 編輯抽籤項目（按一下才會顯示）' : '🙈 收起項目（避免學生一直盯著看）'; });
+        box.appendChild(eb2);
+        var hp = el('p', 'hint', '一行一個項目（可以是名字、題號、小組…）：'); hp.hidden = true; box.appendChild(hp);
+        ta = el('textarea', 'help-ta'); ta.style.height = '110px'; ta.value = saved; ta.placeholder = '例如：\n第1題\n第2題\n第3題'; ta.hidden = true; box.appendChild(ta);
         ta.oninput = function () { try { localStorage.setItem('wb-lottery', ta.value); } catch (e) {} drawnPool.lot = []; upd(); };
       }
       var opts = el('div', 'draw-opts');
@@ -1605,7 +1637,7 @@
       function poolNow() { var d = drawnPool[kind]; return all().filter(function (v) { return !optNo || d.indexOf(v) < 0; }); }
       function upd() {
         var a = all(), p = poolNow();
-        info.textContent = !a.length ? (isStu ? '目前沒有學生（還沒有人加入，或取消「只抽在線」）' : '請先在上面輸入要抽的項目') : p.length ? '還有 ' + p.length + ' / ' + a.length + ' 個可以抽' + (drawnPool[kind].length ? '；已抽過：' + drawnPool[kind].map(lab).join('、') : '') : '都抽完了！按「重新開始」可以再抽';
+        info.textContent = !a.length ? (isStu ? '目前沒有學生（還沒有人加入，或取消「只抽在線」）' : '請先按上面的「編輯抽籤項目」輸入要抽的項目') : p.length ? '還有 ' + p.length + ' / ' + a.length + ' 個可以抽' + (drawnPool[kind].length ? '；已抽過：' + drawnPool[kind].map(lab).join('、') : '') : '都抽完了！按「重新開始」可以再抽';
         go.disabled = !p.length;
       }
       upd();
@@ -1650,25 +1682,63 @@
   function cdLeft() { return !CD ? 0 : CD.paused ? CD.left : Math.max(0, CD.end - Date.now()); }
   function cdMsg() { return CD ? { t: 'cd', total: CD.total, left: cdLeft(), paused: !!CD.paused } : { t: 'cd', off: 1 }; }
   function cdSend(sid) { if (net) net.send(cdMsg(), sid || '*'); }
+  var beepT = null;
+  function stopBeep() { clearInterval(beepT); beepT = null; }
   function beep(n) {
-    try {
-      var AC = window.AudioContext || window.webkitAudioContext, c = new AC();
-      for (var i = 0; i < (n || 3); i++) { var o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.25, c.currentTime + i * 0.35); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + i * 0.35 + 0.3); o.start(c.currentTime + i * 0.35); o.stop(c.currentTime + i * 0.35 + 0.32); }
-    } catch (e) {}
+    stopBeep();
+    var k = 0;
+    function one() {
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext, c = new AC(), o = c.createOscillator(), g = c.createGain();
+        o.frequency.value = k % 2 ? 660 : 880; o.connect(g); g.connect(c.destination);
+        g.gain.setValueAtTime(0.3, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.3);
+        o.start(); o.stop(c.currentTime + 0.32); setTimeout(function () { try { c.close(); } catch (e) {} }, 600);
+      } catch (e) {}
+      if (++k >= (n || 15)) stopBeep();
+    }
+    one(); beepT = setInterval(one, 400);
   }
   function cdFmt(ms) { var s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  var cdPos = null, cdScale = 1;
+  function cdPlace() {
+    if (!cdBox) return;
+    if (!cdPos) { cdPos = { x: Math.max(0, (window.innerWidth - cdBox.offsetWidth * cdScale) / 2), y: 64 }; }
+    cdBox.style.left = cdPos.x + 'px'; cdBox.style.top = cdPos.y + 'px'; cdBox.style.transform = 'scale(' + cdScale + ')';
+  }
+  function cdAdd(sec) {
+    if (!CD) return; var ms = sec * 1000, l = cdLeft();
+    stopBeep();
+    if (CD.paused) CD.left = l + ms; else CD.end = Date.now() + l + ms;
+    CD.total = Math.max(CD.total, l + ms); CD.fired = false; cdSend(); cdDraw();
+  }
   function cdDraw() {
     if (!CD) { if (cdBox) { cdBox.remove(); cdBox = null; } return; }
     if (!cdBox) {
       cdBox = el('div', 'cd-host'); document.body.appendChild(cdBox);
-      cdBox.innerHTML = '<span class="cd-t"></span><button class="cd-b" data-a="p" title="暫停／繼續">⏸</button><button class="cd-b" data-a="r" title="重來">↺</button><button class="cd-b" data-a="x" title="關掉計時器">✕</button>';
+      cdBox.innerHTML = '<div class="cd-r1"><span class="cd-t" title="按住可以拖動位置"></span><button class="cd-b" data-a="p" title="暫停／繼續">⏸</button><button class="cd-b" data-a="r" title="重來">↺</button><button class="cd-b" data-a="x" title="關掉計時器">✕</button></div><div class="cd-r2"><small>幫學生加：</small>' + [5, 10, 15, 20, 25, 30].map(function (s) { return '<button class="cd-b cd-add" data-add="' + s + '">＋' + s + '</button>'; }).join('') + '<small>秒</small></div><div class="cd-rs" title="按住拖曳可以縮放大小">◢</div>';
       cdBox.onclick = function (e) {
+        var ad = e.target.dataset && e.target.dataset.add; if (ad) return cdAdd(+ad);
         var a = e.target.dataset && e.target.dataset.a; if (!a) return;
+        stopBeep();
         if (a === 'x') { CD = null; cdSend(); cdDraw(); return; }
         if (a === 'r') { cdStart(CD.total); return; }
         if (CD.paused) { CD.paused = false; CD.end = Date.now() + CD.left; } else { CD.left = cdLeft(); CD.paused = true; }
         cdSend(); cdDraw();
       };
+      cdBox.addEventListener('pointerdown', function (e) {
+        var rs = e.target.classList.contains('cd-rs');
+        if (e.target.closest('.cd-b')) return;
+        e.preventDefault();
+        var sx = e.clientX, sy = e.clientY, p0 = { x: cdPos.x, y: cdPos.y }, s0 = cdScale, w0 = cdBox.offsetWidth;
+        function mv(ev) {
+          if (rs) { cdScale = Math.max(0.5, Math.min(3, s0 + (ev.clientX - sx) / w0)); }
+          else { cdPos = { x: Math.max(0, Math.min(window.innerWidth - 60, p0.x + ev.clientX - sx)), y: Math.max(0, Math.min(window.innerHeight - 40, p0.y + ev.clientY - sy)) }; }
+          cdPlace();
+        }
+        function up() { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); }
+        document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+      });
+      cdPlace();
     }
     var l = cdLeft();
     cdBox.querySelector('.cd-t').textContent = (l <= 0 ? '⏰ 時間到！' : '⏱ ' + cdFmt(l));
@@ -1676,11 +1746,11 @@
     cdBox.classList.toggle('hurry', l > 0 && l <= 10000); cdBox.classList.toggle('done', l <= 0);
   }
   function cdStart(ms) { CD = { total: ms, left: ms, end: Date.now() + ms, paused: false, fired: false }; cdSend(); cdDraw(); }
-  setInterval(function () { if (!CD) return; if (!CD.paused && !CD.fired && cdLeft() <= 0) { CD.fired = true; beep(3); } cdDraw(); }, 250);
+  setInterval(function () { if (!CD) return; if (!CD.paused && !CD.fired && cdLeft() <= 0) { CD.fired = true; beep(15); } cdDraw(); }, 250);
   function timerModal() {
     modal(function (box) {
       var hd = el('div', 'help-top'); hd.appendChild(el('h3', '', '⏱️ 倒數計時')); hd.appendChild(btn('btn', '✕ 關閉', closeModal)); box.appendChild(hd);
-      box.appendChild(el('p', 'hint', '計時器會出現在畫面上方，學生的畫面也會同步顯示；時間到會響三聲（學生那邊的聲音依裝置而定）。'));
+      box.appendChild(el('p', 'hint', '計時器會出現在畫面上方，學生的畫面也會同步顯示；時間到會連續響約 6 秒；計時器可以拖動位置、拖右下角 ◢ 縮放，也可以按「＋5…＋30」幫學生加秒數。'));
       var r = el('div', 'proj-acts');
       [1, 2, 3, 5, 10, 15, 20].forEach(function (m) { r.appendChild(btn('btn', m + ' 分鐘', function () { closeModal(); cdStart(m * 60000); })); });
       box.appendChild(r);
@@ -1745,16 +1815,24 @@
     if (POLL.show) m.res = { counts: pollCounts(), ans: POLL.ans };
     return m;
   }
-  function pollSend(sid) { if (net) net.send(pollMsg(), sid || '*'); }
+  function pollTargets() { if (!POLL || !POLL.gids || !POLL.gids.length) return null; var o = []; POLL.gids.forEach(function (g) { o = o.concat(members(g)); }); return o; }
+  function pollSend(sid) {
+    if (!net) return;
+    var to = pollTargets();
+    if (!to) return net.send(pollMsg(), sid || '*');
+    if (sid) { if (to.indexOf(sid) >= 0) net.send(pollMsg(), sid); return; }
+    to.forEach(function (s) { net.send(pollMsg(), s); });
+  }
   function pollVote(sid, d) {
     if (!POLL || !POLL.open || d.pid !== POLL.id) return;
+    var tg = pollTargets(); if (tg && tg.indexOf(sid) < 0) return;
     var o = +d.o; if (!(o >= 0 && o < POLL.opts.length)) return;
     POLL.votes[sid] = o; pollDraw(); if (POLL.show) pollSend();
   }
   function pollDraw() {
     if (!POLL) { if (pollBox) { pollBox.parentNode.removeChild(pollBox); pollBox = null; } return; }
     if (!pollBox) { pollBox = el('div', 'poll-host'); document.body.appendChild(pollBox); }
-    var c = pollCounts(), tot = Object.keys(POLL.votes).length, mx = Math.max.apply(null, c.concat([1])), onl = Object.keys(S.students).filter(function (s) { return online[s]; });
+    var c = pollCounts(), tot = Object.keys(POLL.votes).length, mx = Math.max.apply(null, c.concat([1])), onl = Object.keys(S.students).filter(function (s) { return online[s] && (!pollTargets() || pollTargets().indexOf(s) >= 0); });
     var miss = onl.filter(function (s) { return POLL.votes[s] == null; });
     var h = '<div class="ph-q">📊 ' + esc(POLL.q || '投票') + '</div>';
     POLL.opts.forEach(function (t, i) {
@@ -1770,10 +1848,101 @@
       pollSend(); pollDraw();
     };
   }
+  var QBANK = []; try { QBANK = JSON.parse(localStorage.getItem('wb-qbank') || '[]') || []; } catch (e) { QBANK = []; }
+  var QREFRESH = null;
+  function qSave() { try { localStorage.setItem('wb-qbank', JSON.stringify(QBANK)); } catch (e) {} }
+  function csvParse(t) {
+    var rows = [], r = [], f = '', q = false, i = 0;
+    t = t.replace(/^\uFEFF/, '');
+    for (; i < t.length; i++) {
+      var c = t[i];
+      if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true;
+      else if (c === ',' || c === '\t') { r.push(f); f = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; r.push(f); f = ''; rows.push(r); r = []; }
+      else f += c;
+    }
+    if (f || r.length) { r.push(f); rows.push(r); }
+    return rows;
+  }
+  function qTemplate() {
+    var rows = [['題號', '題型(選擇或是非)', '題目', '選項A', '選項B', '選項C', '選項D', '選項E', '選項F', '正確答案(寫A或B…；是非寫 是 或 非；可空白)'],
+      [1, '選擇', '「春天來了」的「來」是哪一個字？', '來', '耒', '末', '未', '', '', 'A'],
+      [2, '是非', '烏龜是哺乳類動物。', '', '', '', '', '', '', '非'],
+      [3, '選擇', '下面哪個是注音符號？', 'ㄅ', 'A', '1', '甲', '', '', 'A']];
+    var csv = '\uFEFF' + rows.map(function (r) { return r.map(function (x) { return '"' + String(x).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = '題目範本.csv'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 3000);
+  }
+  function qParse(text) {
+    var rows = csvParse(text), out = [];
+    rows.forEach(function (r, idx) {
+      if (!r || r.length < 3) return; var no = (r[0] || '').trim(), q = (r[2] || '').trim();
+      if (idx === 0 && /題/.test(no) && !/^\d+$/.test(no)) return;
+      if (!q && !no) return;
+      var tf = /是非|TF|tf/.test(r[1] || ''), opts = [], ans = -1, a = (r[9] || '').trim();
+      if (tf) { opts = ['⭕', '❌']; if (/^(是|O|o|⭕|對|T|true)$/.test(a)) ans = 0; else if (/^(非|X|x|❌|錯|F|false)$/.test(a)) ans = 1; }
+      else {
+        for (var i = 3; i <= 8; i++) opts.push((r[i] || '').trim());
+        var n = opts.length; while (n > 2 && !opts[n - 1]) n--; opts = opts.slice(0, n);
+        var li = 'ABCDEF'.indexOf(a.toUpperCase().charAt(0)); if (a && li >= 0 && li < opts.length) ans = li;
+      }
+      out.push({ no: no || String(out.length + 1), q: q, opts: opts, ans: ans });
+    });
+    return out;
+  }
+  (function () {
+    var f = document.createElement('input'); f.type = 'file'; f.id = 'q-in'; f.accept = '.csv,.txt,text/csv'; f.hidden = true; document.body.appendChild(f);
+    f.onchange = function () {
+      var file = f.files && f.files[0]; if (!file) return;
+      var rd = new FileReader(); rd.onload = function () {
+        var items = qParse(String(rd.result || ''));
+        if (!items.length) return toast('讀不到題目，請用「下載題目範本」的格式編輯後再上傳');
+        QBANK = items; qSave(); toast('✅ 已上傳 ' + items.length + ' 題'); if (QREFRESH) QREFRESH();
+      }; rd.readAsText(file, 'utf-8');
+    };
+  })();
   function pollModal() {
     modal(function (box) {
       var hd = el('div', 'help-top'); hd.appendChild(el('h3', '', '📊 投票／選擇題')); hd.appendChild(btn('btn', '✕ 關閉', closeModal)); box.appendChild(hd);
       box.appendChild(el('p', 'hint', '學生的畫面會跳出作答按鈕，你這邊即時看到每個選項有幾人選、還有誰沒答。題目可以空白（口頭出題時用）。'));
+      /* 對象：全班或指定小組／學生 */
+      var tgt = [], tbox = el('div', 'q-tgt');
+      (function () {
+        var gs = liveGroups(), all = btn('btn sm primary', '👥 全班', function () { tgt = []; draw(); });
+        function draw() {
+          tbox.innerHTML = ''; tbox.appendChild(el('b', '', '出題對象：'));
+          all.className = 'btn sm' + (tgt.length ? '' : ' primary'); tbox.appendChild(all);
+          gs.forEach(function (g) { var on = tgt.indexOf(g) >= 0; tbox.appendChild(btn('btn sm' + (on ? ' primary' : ''), (on ? '✓ ' : '') + groupLabel(g), function () { if (on) tgt.splice(tgt.indexOf(g), 1); else tgt.push(g); draw(); })); });
+          if (!gs.length) tbox.appendChild(el('span', 'hint', '（還沒有學生加入，現在只能選全班）'));
+        }
+        draw();
+      })();
+      box.appendChild(tbox);
+      function startPoll(qq, opts, ans) {
+        POLL = { id: WB.uid(), q: qq, opts: opts, votes: {}, open: true, show: false, ans: ans, gids: tgt.slice() };
+        closeModal(); pollSend(); pollDraw();
+        toast(tgt.length ? '📊 已送給選取的 ' + tgt.length + ' 個對象' : '📊 已送給全班');
+      }
+      /* 題庫：下載範本、上傳題目檔、選第幾題（清單只顯示題號和題目，不顯示選項和答案） */
+      var qb = el('div', 'q-bank'); box.appendChild(qb);
+      function bankDraw() {
+        qb.innerHTML = ''; var top = el('div', 'draw-opts'); top.appendChild(el('b', '', '📚 題庫'));
+        top.appendChild(btn('btn sm', '⬇ 下載題目範本', qTemplate));
+        top.appendChild(btn('btn sm primary', '⬆ 上傳題目檔', function () { var f = $('q-in'); f.value = ''; f.click(); }));
+        if (QBANK.length) top.appendChild(btn('btn sm', '🗑 清空題庫', function () { QBANK = []; qSave(); bankDraw(); }));
+        qb.appendChild(top);
+        if (!QBANK.length) { qb.appendChild(el('p', 'hint', '還沒有題庫。按「下載題目範本」用 Excel 編輯（一次可以放很多題），存好後按「上傳題目檔」，再從清單選第幾題出給學生。'));  return; }
+        qb.appendChild(el('p', 'hint', '共 ' + QBANK.length + ' 題；清單只顯示題號和題目，選項與答案不會出現，點「出這題」就送給上面選的對象。'));
+        var ls = el('div', 'q-list');
+        QBANK.forEach(function (it, i) {
+          var r = el('div', 'q-row'); r.appendChild(el('span', 'q-no', '第 ' + it.no + ' 題')); r.appendChild(el('span', 'q-q', it.q || '（口頭出題）'));
+          r.appendChild(btn('btn sm primary', '出這題', function () { startPoll(it.q, it.opts.slice(), it.ans); })); ls.appendChild(r);
+        });
+        qb.appendChild(ls);
+      }
+      bankDraw(); QREFRESH = bankDraw;
+      box.appendChild(el('p', 'hint', '— 或者現場手動出一題 —'));
       var q = el('input', 'wide-in'); q.placeholder = '題目（可以空白）'; box.appendChild(q);
       var n = 4, tf = false, ans = -1, listEl = el('div', 'poll-opts'); box.appendChild(listEl);
       var texts = [];
@@ -1797,8 +1966,7 @@
       row.appendChild(btn('btn primary', '▶ 開始投票', function () {
         var cnt = tf ? 2 : n, opts = [];
         for (var i = 0; i < cnt; i++) opts.push(tf ? (i ? '❌' : '⭕') : (texts[i] || '').trim());
-        POLL = { id: WB.uid(), q: q.value.trim(), opts: opts, votes: {}, open: true, show: false, ans: ans };
-        closeModal(); pollSend(); pollDraw();
+        startPoll(q.value.trim(), opts, ans);
       }));
       box.appendChild(row);
     });
@@ -2017,7 +2185,7 @@
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
     '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><p>筆、橡皮擦、圖形、插入、課堂、動作：電腦上滑鼠移上去就會浮出選單，平板和手機按一下展開。頁面欄收起來時，滑鼠碰到左邊的「頁面」小標籤會暫時浮出（不會改變畫板大小），滑鼠離開 3 秒後自動收回；按 📌 可固定打開。</p><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>：展開後可選大小，裡面也有<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單，要按「編輯抽籤項目」才會顯示輸入框，避免學生盯著看）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示；計時器可拖動、拖右下角縮放，有「＋5～＋30 秒」按鈕，時間到連續響約 6 秒）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布；也能<b>下載「題目範本」</b>用 Excel 編好一次上傳很多題，清單只顯示題號和題目，點「出這題」就送出，還可指定只出給某幾組或某幾位學生）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
