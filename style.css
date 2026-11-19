@@ -623,3 +623,6 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .nt-m{word-break:break-all}
 .note-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff8a00;margin-left:5px;vertical-align:middle;box-shadow:0 0 0 0 #ff8a00aa;animation:ndot 1s infinite}
 @keyframes ndot{0%{opacity:1;box-shadow:0 0 0 0 #ff8a00aa}50%{opacity:.35;box-shadow:0 0 0 6px #ff8a0000}100%{opacity:1;box-shadow:0 0 0 0 #ff8a0000}}
+.alert-box{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:98;display:flex;flex-direction:column;gap:8px;max-width:min(92vw,620px);width:max-content}
+.alert-card{display:flex;align-items:center;gap:10px;background:#fff7e6;border:2px solid #ff8a00;color:#3a2a00;border-radius:12px;padding:10px 14px;box-shadow:0 6px 22px #0003;font-weight:600}
+.alert-m{flex:1}
