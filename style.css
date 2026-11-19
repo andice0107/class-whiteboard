@@ -484,3 +484,7 @@ body.host.dark .ph-b button{background:#343c52;color:var(--ink);border-color:#39
 .ov-l{margin-top:6px;font-weight:700;font-size:14px}
 .ov-l small{display:block;color:#6b7285;font-weight:600}
 body.host.dark .ov-card{background:#2a3144;color:var(--ink);border-color:#394258}
+.ord-wrap{margin:6px 0 10px}
+.ord-row{display:flex;align-items:center;gap:6px;margin:3px 0}
+.ord-n{flex:1;font-weight:700;padding:6px 10px;background:#f1f5ff;border-radius:8px}
+body.host.dark .ord-n{background:#2a3144}

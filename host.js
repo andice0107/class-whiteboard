@@ -330,6 +330,48 @@
       if (!V.objs.length) return toast('這一頁已經是空白的');
       confirmBox('要把這一頁全部清空嗎？（筆劃、圖片、文字、圖形、便利貼、影片都會清掉；按「上一步」可以復原）', '全部清除', function () { V.clearAll(); renderTools(); });
     }));
+    orderTools();
+  }
+  /* 工具欄順序：預設照下面的排，可以在「🎨 顯示設定」調整；登入 Google 後跟著帳號走 */
+  var TB_DEF = [['pen', '✏️ 筆'], ['colors', '🎨 黑紅藍三色'], ['erase', '🧽 橡皮擦'], ['clearpen', '🧹 清除筆劃'], ['select', '選取（移動／圈選）'], ['shape', '🔷 圖形'], ['insert', '➕ 插入'], ['lock', '🔓 全部鎖定'], ['zoom', '🔍 放大鏡'], ['class', '🎲 課堂'], ['action', '🎬 動作（上一步／下一步）'], ['clearall', '🗑️ 全清除']];
+  var TBO = []; try { TBO = JSON.parse(localStorage.getItem('wb-tborder') || '[]') || []; } catch (e) { TBO = []; }
+  function tbOrder() {
+    var keys = TB_DEF.map(function (x) { return x[0]; }), out = TBO.filter(function (k) { return keys.indexOf(k) >= 0; });
+    keys.forEach(function (k, i) { if (out.indexOf(k) < 0) { var prev = i ? out.indexOf(keys[i - 1]) : -1; out.splice(prev + 1, 0, k); } });
+    return out;
+  }
+  function orderTools() {
+    var t = $('toolbar'), ch = Array.prototype.slice.call(t.children), ks = TB_DEF.map(function (x) { return x[0]; }).filter(function (k) { return k !== 'zoom' || tv.kind === 'page'; });
+    var rest = ch.filter(function (c) { return !c.classList.contains('tb-swap'); }); /* swap 鍵永遠在最上面 */
+    if (rest.length !== ks.length) return;
+    var byK = {}; rest.forEach(function (c, i) { byK[ks[i]] = c; });
+    tbOrder().forEach(function (k) { if (byK[k]) t.appendChild(byK[k]); });
+  }
+  function savePrefs() {
+    try { localStorage.setItem('wb-tborder', JSON.stringify(TBO)); } catch (e) {}
+    if (fbUser && fbApp) { try { myRef('prefs').set({ tborder: TBO, ui: UI, at: Date.now() }); } catch (e) {} }
+  }
+  function loadPrefs(u) {
+    if (!u || !fbApp) return;
+    fbApp.database().ref('wbu/' + u.uid + '/prefs').once('value').then(function (s) {
+      var v = s.val();
+      if (!v) { savePrefs(); return; }  /* 雲端還沒有設定：把這台的設定存上去 */
+      if (Array.isArray(v.tborder)) TBO = v.tborder; else TBO = [];
+      if (v.ui && typeof v.ui === 'object') UI = v.ui;
+      try { localStorage.setItem('wb-tborder', JSON.stringify(TBO)); localStorage.setItem('wb-ui', JSON.stringify(UI)); } catch (e) {}
+      applyUI(); renderTools(); toast('☁️ 已載入你的工具欄順序與顯示設定');
+    }).catch(function () {});
+  }
+  function orderPanel(wrap) {
+    wrap.innerHTML = '';
+    var cur = tbOrder(), names = {}; TB_DEF.forEach(function (x) { names[x[0]] = x[1]; });
+    cur.forEach(function (k, i) {
+      var r = el('div', 'ord-row'); r.appendChild(el('span', 'ord-n', names[k]));
+      var up = btn('btn sm', '▲', function () { if (i < 1) return; cur.splice(i - 1, 0, cur.splice(i, 1)[0]); TBO = cur; savePrefs(); renderTools(); orderPanel(wrap); }); up.disabled = i === 0;
+      var dn = btn('btn sm', '▼', function () { if (i >= cur.length - 1) return; cur.splice(i + 1, 0, cur.splice(i, 1)[0]); TBO = cur; savePrefs(); renderTools(); orderPanel(wrap); }); dn.disabled = i === cur.length - 1;
+      r.appendChild(up); r.appendChild(dn); wrap.appendChild(r);
+    });
+    wrap.appendChild(btn('btn', '↺ 恢復預設順序', function () { TBO = []; savePrefs(); renderTools(); orderPanel(wrap); }));
   }
   var CAN_HOVER = !!(window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)').matches);
   var actT = null;
@@ -1256,7 +1298,7 @@
     if (fbApp || !window.firebase) return fbApp;
     try {
       fbApp = firebase.initializeApp(FB_CFG, 'wb');
-      fbApp.auth().onAuthStateChanged(function (u) { fbUser = u; fbReady = true; var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection()); $('b-proj').innerHTML = '💾 專案' + (u ? ' <span class="me-dot" title="已登入 Google">●</span>' : ''); });
+      fbApp.auth().onAuthStateChanged(function (u) { fbUser = u; fbReady = true; loadPrefs(u); var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection()); $('b-proj').innerHTML = '💾 專案' + (u ? ' <span class="me-dot" title="已登入 Google">●</span>' : ''); });
     } catch (e) { fbApp = null; }
     return fbApp;
   }
@@ -1733,7 +1775,7 @@
   /* ---------- ❓ 如何使用（給使用者／給AI） ---------- */
   var UI = {}; try { UI = JSON.parse(localStorage.getItem('wb-ui') || '{}') || {}; } catch (e) { UI = {}; }
   function applyUI() { document.body.classList.toggle('dark', !!UI.dark); document.body.classList.toggle('ui-big', UI.size === 'big'); document.body.classList.toggle('ui-xl', UI.size === 'xl'); setTimeout(function () { V.refit && V.refit(); }, 50); }
-  function saveUI() { try { localStorage.setItem('wb-ui', JSON.stringify(UI)); } catch (e) {} applyUI(); }
+  function saveUI() { try { localStorage.setItem('wb-ui', JSON.stringify(UI)); } catch (e) {} applyUI(); if (typeof savePrefs === 'function' && fbUser) savePrefs(); }
   applyUI();
   var HELP_SAMPLE = {
     app: 'class-whiteboard', v: 1, name: '範本：三上國語第一課',
@@ -1800,6 +1842,9 @@
         var r1 = el('div', 'proj-acts');
         [['', '標準'], ['big', '大'], ['xl', '特大']].forEach(function (z) { r1.appendChild(btn('btn' + ((UI.size || '') === z[0] ? ' primary' : ''), z[1], function () { UI.size = z[0]; saveUI(); helpModal('s'); })); });
         body.appendChild(r1);
+        body.appendChild(el('div', 'pop-l tag t4', '🧰 工具欄順序（常用的放上面；「⇄」鍵固定在最上面）'));
+        var ow = el('div', 'ord-wrap'); body.appendChild(ow); orderPanel(ow);
+        body.appendChild(el('p', 'hint', '登入 Google（「💾 專案」→ 我的專案）後，順序和顯示設定會存在你的帳號，換電腦登入也會一樣。'));
         body.appendChild(el('div', 'pop-l tag t3', '🌙 顏色'));
         var r2 = el('div', 'proj-acts');
         [[false, '☀️ 淺色'], [true, '🌙 深色（工具欄、選單變暗；畫布維持白色，筆跡才看得清楚）']].forEach(function (z) { r2.appendChild(btn('btn' + (!!UI.dark === z[0] ? ' primary' : ''), z[1], function () { UI.dark = z[0]; saveUI(); helpModal('s'); })); });
@@ -1826,7 +1871,7 @@
     '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上）、<b>教具</b>（直尺、量角器、數線、時鐘；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
-    '<h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
+    '<h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
   $('b-help').onclick = function () { helpModal('u'); };
 
