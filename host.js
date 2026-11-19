@@ -195,8 +195,9 @@
       WB.applyOp(objsOf(bid) || [], op);
       distribute(bid, { t: 'op', op: op });
       boardChanged(bid); save(); if (!temp) renderTools();
+      if (layerBox && !temp) layersDraw();
     },
-    onSelect: function (o) { if (pop && pop._obj && (!o || pop._obj !== o.id)) closePop(); },
+    onSelect: function (o) { if (pop && pop._obj && (!o || pop._obj !== o.id)) closePop(); if (layerBox) layersDraw(); },
     onContext: function (o, x, y) { if (S.mode === 'show') return; objMenu(o, x, y); },
     onWantSelect: function () { setMode('select'); },
     onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
@@ -235,6 +236,8 @@
       AKEYS.forEach(function (k) { r.appendChild(btn('btn sm' + (V.addKey === k[0] ? ' primary' : ''), k[1], function () { V.addKey = k[0]; try { localStorage.setItem('wb-addkey', k[0]); } catch (e) {} toast('➕ 多選鍵改成：按住 ' + k[1] + ' 再點物件'); renderTools(); selPanel($('toolbar').querySelector('[data-selb]')); })); });
       p.appendChild(r);
       p.appendChild(el('p', 'hint', '這個設定只存在這台電腦。'));
+      p.appendChild(el('div', 'pop-l tag t2', '🗂 圖層：調整物件的上下關係'));
+      p.appendChild(btn('btn', '🗂 開啟圖層面板', function () { closePop(); if (!layerBox) layersPanel(); }));
     });
   }
   function zkName(k) { var f = ZKEYS.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
@@ -508,6 +511,8 @@
       p.appendChild(el('div', 'pop-h', '⭕ 已圈選 ' + list.length + ' 個物件'));
       function mi(h, fn, cls) { var b = btn('mi' + (cls ? ' ' + cls : ''), h, function () { fn(); }); p.appendChild(b); return b; }
       mi(lk ? '🔓 全部解除鎖定' : '🔒 全部鎖定', function () { closePop(); V.groupOp('lock', !lk); renderTools(); });
+      var lids = list.filter(function (o) { return o.k !== 's'; }).map(function (o) { return o.id; });
+      if (lids.length) { var lr = el('div', 'pop-row'); lr.appendChild(el('span', '', '圖層')); [['⤒ 置頂', 'front'], ['↑ 上移', 'up'], ['↓ 下移', 'down'], ['⤓ 置底', 'back']].forEach(function (z) { lr.appendChild(btn('btn sm', z[0], function () { V.reorder(lids, z[1]); })); }); p.appendChild(lr); }
       var hdn = list.some(function (o) { return o.hd; });
       mi(hdn ? '👁 全部揭曉給學生看' : '🙈 全部先隱藏（學生看不到）', function () { closePop(); V.groupOp('hide', !hdn); renderTools(); });
 
@@ -528,11 +533,16 @@
       if (!lk) mi('🗑️ 全部刪除', function () { closePop(); V.groupOp('del'); renderTools(); }, 'danger');
     });
   }
+  var IC_PROTR = '<svg width="26" height="16" viewBox="0 0 26 16" style="vertical-align:-2px"><path d="M1 15A12 12 0 0 1 25 15Z" fill="#d0ebff" stroke="#1c3d6e" stroke-width="1.5"/><path d="M13 15V4M13 15L5 6.5M13 15L21 6.5M13 15L2.5 11M13 15L23.5 11" stroke="#1c3d6e" stroke-width="1"/></svg>';
+  var IC_SQ45 = '<svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:-3px"><path d="M2 2V18H18Z" fill="#ffe8cc" stroke="#333" stroke-width="1.5"/><path d="M2 14H6V18" fill="none" stroke="#333" stroke-width="1"/></svg>';
+  var IC_SQ30 = '<svg width="26" height="16" viewBox="0 0 26 16" style="vertical-align:-2px"><path d="M1.5 1.5V14.5H24.5Z" fill="#d3f9d8" stroke="#333" stroke-width="1.5"/><path d="M1.5 11H5V14.5" fill="none" stroke="#333" stroke-width="1"/></svg>';
   var BGS = [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線'], ['tian', '田 田字格'], ['zy', 'ㄅ 國字注音格'], ['paper', '✎ 作文稿紙'], ['ruled', '≡ 橫線']];
   function addAid(kind) {
     var D = {
       ruler: { w: 900, h: 90, n: 15, fill: true, fc: '#fff3bf', op: 0.92, sc: '#333333', sw: 1.5 },
       protr: { w: 640, h: 330, fill: true, fc: '#d0ebff', op: 0.8, sc: '#1c3d6e', sw: 1.5 },
+      sq45: { w: 560, h: 560, ar: true, n: 14, fill: true, fc: '#ffe8cc', op: 0.8, sc: '#333333', sw: 2 },
+      sq30: { w: 640, h: 370, ar: true, n: 16, fill: true, fc: '#d3f9d8', op: 0.8, sc: '#333333', sw: 2 },
       numline: { w: 1000, h: 110, nmin: 0, nmax: 10, st: 1, fill: false, op: 1, sc: '#111111', sw: 3 },
       clock: { w: 380, h: 380, hh: 3, mm: 0, fill: true, fc: '#ffffff', op: 1, sc: '#111111', sw: 3 }
     }[kind], c = center(D.w, D.h); toSelect();
@@ -562,7 +572,7 @@
       p.appendChild(r);
       p.appendChild(el('div', 'pop-l tag t5', '📐 教具（放上去可以拖、縮放、旋轉）'));
       r = el('div', 'pop-row');
-      [['ruler', '📏 直尺'], ['protr', '📐 量角器'], ['numline', '↔️ 數線'], ['clock', '🕒 時鐘']].forEach(function (b) { r.appendChild(btn('btn', b[1], function () { closePop(); addAid(b[0]); })); });
+      [['ruler', '📏 直尺'], ['protr', IC_PROTR + ' 量角器'], ['sq45', IC_SQ45 + ' 三角板 45°'], ['sq30', IC_SQ30 + ' 三角板 30°60°'], ['numline', '↔️ 數線'], ['clock', '🕒 時鐘']].forEach(function (b) { r.appendChild(btn('btn', b[1], function () { closePop(); addAid(b[0]); })); });
       p.appendChild(r);
       p.appendChild(el('div', 'pop-l tag t4', '▦ 畫布背景（移動物件時會對齊格子）'));
       r = el('div', 'pop-row');
@@ -595,6 +605,9 @@
       function chg(patch) { V.change(patch); again(); }
       var h = el('div', 'pop-h'); h.appendChild(el('span', '', KIND[o.k] || '物件')); m.appendChild(h);
       m.appendChild(btn('mi' + (o.lk ? ' on' : ''), o.lk ? '🔓 解除鎖定這個物件' : '🔒 鎖定這個物件（不會被移動或修改）', function () { chg({ lk: !o.lk }); }));
+      var lyr = row(); lyr.appendChild(el('span', '', '圖層'));
+      [['⤒ 置頂', 'front'], ['↑ 上移', 'up'], ['↓ 下移', 'down'], ['⤓ 置底', 'back']].forEach(function (z) { lyr.appendChild(btn('btn sm', z[0], function () { V.reorder([o.id], z[1]); again(); })); });
+      lyr.appendChild(btn('btn sm', '🗂', function () { closePop(); if (!layerBox) layersPanel(); }));
       if (o.k !== 's') m.appendChild(btn('mi' + (o.hd ? ' on' : ''), o.hd ? '👁 揭曉給學生看' : '🙈 先隱藏（學生看不到，之後再揭曉）', function () { chg({ hd: o.hd ? false : true }); }));
       if (o.lk) { m.appendChild(el('div', 'pop-l', '解除鎖定後才能移動、縮放、修改。')); return; }
       if (o.k === 'g' && (o.shape === 'clock' || o.shape === 'numline')) {
@@ -1493,6 +1506,33 @@
       box.appendChild(row);
     });
     $('modal').onclick = function (e) { if (e.target.id === 'modal' && net) closeModal(); };
+  }
+  /* ---------- 🗂 圖層：調整物件的上下關係 ---------- */
+  var layerBox = null;
+  function layerLabel(o) {
+    var base = KIND[o.k] || '物件', txt = '';
+    if (o.k === 'g') { var sn = { rect: '長方形', square: '正方形', circle: '圓形', ellipse: '橢圓', tri: '三角形', rtri: '直角三角形', trap: '梯形', para: '平行四邊形', rhom: '菱形', line: '直線', arrow: '箭頭', grid: '格子', poly: '多邊形', ruler: '直尺', protr: '量角器', sq45: '三角板 45°', sq30: '三角板 30°60°', numline: '數線', clock: '時鐘', zycell: '國字注音格' }[o.shape]; base = '🔷 ' + (sn || '圖形'); }
+    if (o.txt) txt = String(o.txt).replace(/\s+/g, ' ').slice(0, 12);
+    return base + (txt ? '：' + txt : '');
+  }
+  function layersDraw() {
+    if (!layerBox) return;
+    var ids = V.layerIds().slice().reverse(), list = layerBox.querySelector('.lay-list'); list.innerHTML = '';
+    if (!ids.length) list.appendChild(el('p', 'empty', '這一頁還沒有物件。'));
+    ids.forEach(function (id, i) {
+      var o = V.find(id); if (!o) return;
+      var r = el('div', 'lay-row' + (V.sel === id || (V.multi && V.multi.indexOf(id) >= 0) ? ' on' : '') + (o.hd ? ' hid' : ''));
+      var nm = btn('lay-n', (i === 0 ? '▲頂 ' : i === ids.length - 1 ? '▼底 ' : '') + esc(layerLabel(o)), function () { tool.mode !== 'select' && setMode('select'); V.select(id); layersDraw(); }); r.appendChild(nm);
+      [['⤒', 'front', '置頂'], ['↑', 'up', '上移一層'], ['↓', 'down', '下移一層'], ['⤓', 'back', '置底']].forEach(function (z) { var b = btn('btn sm', z[0], function () { V.reorder([id], z[1]); layersDraw(); }); b.title = z[2]; r.appendChild(b); });
+      list.appendChild(r);
+    });
+  }
+  function layersPanel() {
+    if (layerBox) { layerBox.parentNode.removeChild(layerBox); layerBox = null; return; }
+    layerBox = el('div', 'layer-panel');
+    var hd = el('div', 'lay-h'); hd.appendChild(el('b', '', '🗂 圖層（上面的蓋住下面的）')); hd.appendChild(btn('btn sm', '✕', function () { layerBox.parentNode.removeChild(layerBox); layerBox = null; })); layerBox.appendChild(hd);
+    layerBox.appendChild(el('p', 'hint', '點一列可以選取那個物件；⤒置頂 ↑上移 ↓下移 ⤓置底。筆跡永遠在物件的上面，影片永遠在最上層。'));
+    layerBox.appendChild(el('div', 'lay-list')); document.body.appendChild(layerBox); layersDraw();
   }
   /* ---------- 🎲 課堂工具：點名、抽籤、分組抽籤、倒數計時、隱藏／揭曉 ---------- */
   function stuLabel(sid) { var n = ROSTER[sid]; return n ? n + '（' + sid + '）' : '學號 ' + sid; }

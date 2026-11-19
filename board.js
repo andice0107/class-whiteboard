@@ -41,7 +41,7 @@ window.WB = (function () {
   /* 幾何圖形：在 0..w,0..h 的框內產生點 */
   function shapeGeo(o) {
     var w = o.w, h = o.h, sh = o.shape, L = [];
-    function poly(pts, closed) { L.push({ t: 'p', pts: pts, c: closed !== false }); }
+    function poly(pts, closed) { var it = { t: 'p', pts: pts, c: closed !== false }; L.push(it); return it; }
     if (sh === 'rect' || sh === 'square') poly([[0, 0], [w, 0], [w, h], [0, h]]);
     else if (sh === 'ellipse' || sh === 'circle') L.push({ t: 'e' });
     else if (sh === 'tri') poly([[w / 2, 0], [w, h], [0, h]]);
@@ -76,11 +76,21 @@ window.WB = (function () {
         var pl = pd % 10 === 0 ? R * 0.14 : pd % 5 === 0 ? R * 0.1 : R * 0.06, pc = Math.cos(pd * Math.PI / 180), ps = Math.sin(pd * Math.PI / 180);
         poly([[pcx + R * pc, pcy - R * ps], [pcx + (R - pl) * pc, pcy - (R - pl) * ps]], false);
         if (pd % 10 === 0) {
-          L.push({ t: 'x', x: pcx + R * 0.8 * pc, y: pcy - R * 0.8 * ps, s: String(pd), fs: fsp });
-          L.push({ t: 'x', x: pcx + R * 0.62 * pc, y: pcy - R * 0.62 * ps, s: String(180 - pd), fs: fsp * 0.85 });
+          L.push({ t: 'x', x: pcx + R * 0.8 * pc, y: pcy - R * 0.8 * ps, s: String(pd), fs: fsp, halo: 1 });
+          L.push({ t: 'x', x: pcx + R * 0.62 * pc, y: pcy - R * 0.62 * ps, s: String(180 - pd), fs: fsp * 0.85, halo: 1 });
         }
       }
+      for (pd = 0; pd <= 180; pd += 10) poly([[pcx, pcy], [pcx + R * Math.cos(pd * Math.PI / 180), pcy - R * Math.sin(pd * Math.PI / 180)]], false).sw = Math.max(0.6, (o.sw || 3) * 0.45);
       poly([[pcx - R * 0.06, pcy], [pcx + R * 0.06, pcy]], false); poly([[pcx, pcy - R * 0.06], [pcx, pcy]], false);
+    } else if (sh === 'sq45' || sh === 'sq30') {
+      var TP = [[0, 0], [0, h], [w, h]];
+      poly(TP);
+      var ta = Math.hypot(w, 0), tb = Math.hypot(w, h), tc = h, tp = ta + tb + tc, icx = (w * TP[0][0] + tb * TP[1][0] + tc * TP[2][0]) / tp, icy = (w * TP[0][1] + tb * TP[1][1] + tc * TP[2][1]) / tp;
+      poly(TP.map(function (v) { return [icx + (v[0] - icx) * 0.5, icy + (v[1] - icy) * 0.5]; })).sw = Math.max(0.8, (o.sw || 3) * 0.5);
+      var ucm = 40 * w / (o.n ? o.n * 40 : 600), tk;
+      for (tk = 0; tk * ucm / 2 <= w + 0.01; tk++) { var tx = tk * ucm / 2, tl = tk % 2 === 0 ? 14 : 8; poly([[tx, h], [tx, h - tl]], false).sw = 1; if (tk % 2 === 0 && tk > 0) L.push({ t: 'x', x: tx, y: h - 24, s: String(tk / 2), fs: 12, halo: 1 }); }
+      for (tk = 1; tk * ucm / 2 <= h + 0.01; tk++) { var ty = h - tk * ucm / 2, tl2 = tk % 2 === 0 ? 14 : 8; poly([[0, ty], [tl2, ty]], false).sw = 1; }
+      poly([[0, h - 18], [18, h - 18], [18, h]], false).sw = 1;
     } else if (sh === 'numline') {
       var nmin = o.nmin == null ? 0 : o.nmin, nmax = o.nmax == null ? 10 : o.nmax, st = o.st || 1, mg = w * 0.05, ly = h * 0.4, fsn = Math.max(12, Math.min(34, h * 0.3));
       if (nmax <= nmin) nmax = nmin + 1;
@@ -107,7 +117,7 @@ window.WB = (function () {
     var g = shapeGeo(o), fill = o.fill ? (o.fc || '#ffd6e0') : 'none', sw = o.sw || 3, out = '';
     g.forEach(function (it, i) {
       var f = (i === 0 && it.c !== false) ? fill : 'none';
-      if (it.t === 'x') { out += '<text x="' + it.x.toFixed(1) + '" y="' + it.y.toFixed(1) + '" font-size="' + it.fs.toFixed(1) + '" text-anchor="middle" dominant-baseline="central" stroke="none" fill="' + (o.sc || '#111') + '">' + it.s + '</text>'; return; }
+      if (it.t === 'x') { out += '<text x="' + it.x.toFixed(1) + '" y="' + it.y.toFixed(1) + '" font-size="' + it.fs.toFixed(1) + '" text-anchor="middle" dominant-baseline="central" stroke="' + (it.halo ? '#fff' : 'none') + '" stroke-width="3" stroke-linejoin="round" paint-order="stroke" fill="' + (o.sc || '#111') + '">' + it.s + '</text>'; return; }
       if (it.t === 'e') out += '<ellipse cx="' + o.w / 2 + '" cy="' + o.h / 2 + '" rx="' + o.w / 2 + '" ry="' + o.h / 2 + '" fill="' + fill + '"/>';
       else out += '<polyline points="' + it.pts.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') + (it.c ? ' ' + it.pts[0][0].toFixed(1) + ',' + it.pts[0][1].toFixed(1) : '') + '" fill="' + f + '"' + (it.sw ? ' stroke-width="' + it.sw.toFixed(1) + '"' : '') + '/>';
     });
@@ -117,7 +127,7 @@ window.WB = (function () {
     ctx.save(); ctx.translate(-o.w / 2, -o.h / 2); ctx.globalAlpha = o.op == null ? 1 : o.op;
     ctx.strokeStyle = o.sc || '#111'; ctx.lineWidth = o.sw || 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     shapeGeo(o).forEach(function (it, i) {
-      if (it.t === 'x') { ctx.save(); ctx.fillStyle = o.sc || '#111'; ctx.font = it.fs + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(it.s, it.x, it.y); ctx.restore(); return; }
+      if (it.t === 'x') { ctx.save(); ctx.fillStyle = o.sc || '#111'; ctx.font = it.fs + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; if (it.halo) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeText(it.s, it.x, it.y); } ctx.fillText(it.s, it.x, it.y); ctx.restore(); return; }
       ctx.lineWidth = it.sw || o.sw || 3;
       ctx.beginPath();
       if (it.t === 'e') ctx.ellipse(o.w / 2, o.h / 2, Math.max(1, o.w / 2), Math.max(1, o.h / 2), 0, 0, Math.PI * 2);
@@ -190,7 +200,17 @@ window.WB = (function () {
       for (var j = 0; j < objs.length; j++) if (objs[j].id === o.id) { objs[j] = o; return; }
       objs.push(o);
     });
+    if (op.ord) applyOrd(objs, op.ord);
     return objs;
+  }
+  /* 圖層順序：只重排「物件」（非筆劃），筆劃的位置不動 */
+  function applyOrd(objs, ids) {
+    var slots = [], map = {};
+    objs.forEach(function (o, i) { if (o.k !== 's') { slots.push(i); map[o.id] = o; } });
+    var seq = ids.filter(function (id) { return map[id]; });
+    if (seq.length !== slots.length) { var have = {}; seq.forEach(function (id) { have[id] = 1; }); slots.forEach(function (i) { if (!have[objs[i].id]) seq.push(objs[i].id); }); }
+    var objsCopy = seq.map(function (id) { return map[id]; });
+    slots.forEach(function (i, j) { objs[i] = objsCopy[j]; });
   }
   /* 互動畫板 */
   function view(host, opt) {
@@ -323,7 +343,7 @@ window.WB = (function () {
       var key = o.id + (o.lk ? 'L' : '') + (opt.onContext ? 'M' : '');
       if (sel._id !== key) {
         sel.innerHTML = o.lk ? '<div class="box lk"><i class="lkb" data-h="menu">🔒</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>'
-          : '<div class="box"><i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i><i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i><i class="rot" data-h="rot">⟳</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>';
+          : '<div class="box"><i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i><i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i>' + (o.shape === 'numline' ? '<i class="h nl" data-h="nl" title="往左右拉：增加或減少左邊的數字"></i><i class="h nr" data-h="nr" title="往左右拉：增加或減少右邊的數字"></i>' : '') + '<i class="rot" data-h="rot">⟳</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>';
         sel._id = key;
       }
       var b = sel.firstChild;
@@ -516,18 +536,26 @@ window.WB = (function () {
         var a = Math.atan2(p[1] - D.cy, p[0] - D.cx) * 180 / Math.PI + 90; a = (a + 360) % 360;
         var sn = Math.round(a / 45) * 45; if (Math.abs(a - sn) < 4) a = sn % 360;
         patch = { r: Math.round(a) };
+      } else if (D.h === 'nl' || D.h === 'nr') {
+        var O = D.orig, nm0 = O.nmin == null ? 0 : O.nmin, nx0 = O.nmax == null ? 10 : O.nmax, st0 = O.st || 1, n0 = Math.max(1, Math.round((nx0 - nm0) / st0)), sp = (O.w * 0.9) / n0;
+        var ddx = p[0] - D.cx, ddy = p[1] - D.cy, lx2 = ddx * Math.cos(-D.th) - ddy * Math.sin(-D.th);
+        var kk = D.h === 'nr' ? Math.round((lx2 - O.w / 2) / sp) : Math.round((-lx2 - O.w / 2) / sp);
+        var nn = Math.max(1, Math.min(60, n0 + kk)), nw2 = Math.round(sp * nn / 0.9), off = (nw2 - O.w) / 2 * (D.h === 'nr' ? 1 : -1);
+        var ncx2 = D.cx + off * Math.cos(D.th), ncy2 = D.cy + off * Math.sin(D.th);
+        patch = { x: Math.round(ncx2 - nw2 / 2), y: Math.round(ncy2 - O.h / 2), w: nw2 };
+        if (D.h === 'nr') patch.nmax = nm0 + nn * st0; else patch.nmin = nx0 - nn * st0;
       } else {
         var sx = D.h.indexOf('e') >= 0 ? 1 : -1, sy = D.h.indexOf('s') >= 0 ? 1 : -1;
         var dx = p[0] - D.cx, dy = p[1] - D.cy, c = Math.cos(-D.th), s2 = Math.sin(-D.th);
         var lx = dx * c - dy * s2, ly = dx * s2 + dy * c;
         var ox = -sx * D.orig.w / 2, oy = -sy * D.orig.h / 2;
         var mn = D.orig.k === 'g' ? 2 : 30, w = Math.max(mn, sx * (lx - ox)), hh = Math.max(mn, sy * (ly - oy));
-        if (D.orig.k === 'i' || (D.orig.k === 'g' && (D.orig.shape === 'square' || D.orig.shape === 'circle'))) { var k = Math.max(w / D.orig.w, hh / D.orig.h); w = D.orig.w * k; hh = D.orig.h * k; }
+        if (D.orig.k === 'i' || D.orig.ar || (D.orig.k === 'g' && (D.orig.shape === 'square' || D.orig.shape === 'circle'))) { var k = Math.max(w / D.orig.w, hh / D.orig.h); w = D.orig.w * k; hh = D.orig.h * k; }
         var mx = ox + sx * w / 2, my = oy + sy * hh / 2, c2 = Math.cos(D.th), s3 = Math.sin(D.th);
         var ncx = D.cx + mx * c2 - my * s3, ncy = D.cy + mx * s3 + my * c2;
         patch = { x: Math.round(ncx - w / 2), y: Math.round(ncy - hh / 2), w: Math.round(w), h: Math.round(hh) };
       }
-      if (V.bg && D.h !== 'rot') {
+      if (V.bg && D.h !== 'rot' && D.h !== 'nl' && D.h !== 'nr') {
         var G = 20, sn = function (v) { return Math.round(v / G) * G; };
         if (D.h === 'move') { patch.x = sn(patch.x); patch.y = sn(patch.y); }
         else if (D.orig.k !== 'i' && !D.orig.r) { var x2 = sn(patch.x + patch.w), y2 = sn(patch.y + patch.h); patch.x = sn(patch.x); patch.y = sn(patch.y); patch.w = Math.max(G, x2 - patch.x); patch.h = Math.max(G, y2 - patch.y); }
@@ -840,6 +868,7 @@ window.WB = (function () {
     V.undo = function () {
       var h = hist(), e;
       while ((e = h.pop())) {
+        if (e.ord) { applyOrd(V.objs, e.ord.a); dirty = true; opt.onOp && opt.onOp(V.bid, { ord: e.ord.a }); redoS().push(e); return true; }
         var ids = {}; V.objs.forEach(function (o) { ids[o.id] = 1; });
         var del = e.add.filter(function (o) { return ids[o.id]; });
         if (!del.length && !e.rem.length) continue;
@@ -854,6 +883,7 @@ window.WB = (function () {
     V.redo = function () {
       var rs = redoS(), e;
       while ((e = rs.pop())) {
+        if (e.ord) { applyOrd(V.objs, e.ord.b); dirty = true; opt.onOp && opt.onOp(V.bid, { ord: e.ord.b }); hist().push(e); return true; }
         var ids = {}; V.objs.forEach(function (o) { ids[o.id] = 1; });
         var del = e.rem.filter(function (o) { return ids[o.id]; });
         if (!del.length && !e.add.length) continue;
@@ -865,6 +895,22 @@ window.WB = (function () {
       return false;
     };
     V.canRedo = function () { return redoS().length > 0; };
+    /* 圖層：mode = front 置頂／back 置底／up 上移一層／down 下移一層；ids 可以是多個物件 */
+    V.layerIds = function () { return V.objs.filter(function (o) { return o.k !== 's'; }).map(function (o) { return o.id; }); };
+    V.reorder = function (ids, mode) {
+      var old = V.layerIds(), sel = {}; ids.forEach(function (i) { sel[i] = 1; });
+      var picked = old.filter(function (i) { return sel[i]; }); if (!picked.length) return false;
+      var cur = old.slice(), n;
+      if (mode === 'front') cur = old.filter(function (i) { return !sel[i]; }).concat(picked);
+      else if (mode === 'back') cur = picked.concat(old.filter(function (i) { return !sel[i]; }));
+      else if (mode === 'up') { for (n = cur.length - 2; n >= 0; n--) if (sel[cur[n]] && !sel[cur[n + 1]]) { var t = cur[n]; cur[n] = cur[n + 1]; cur[n + 1] = t; } }
+      else if (mode === 'down') { for (n = 1; n < cur.length; n++) if (sel[cur[n]] && !sel[cur[n - 1]]) { var t2 = cur[n]; cur[n] = cur[n - 1]; cur[n - 1] = t2; } }
+      if (cur.join() === old.join()) return false;
+      applyOrd(V.objs, cur); dirty = true;
+      hist().push({ ord: { a: old, b: cur } }); if (hist().length > 80) hist().shift(); V.redoH[V.bid] = [];
+      opt.onOp && opt.onOp(V.bid, { ord: cur });
+      return true;
+    };
     V.canUndo = function () { return hist().length > 0; };
     /* 全消除：老師清全部筆劃；學生只清自己的 */
     V.clear = function (all) {
