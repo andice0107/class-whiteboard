@@ -537,6 +537,11 @@
   var IC_SQ45 = '<svg width="20" height="20" viewBox="0 0 20 20" style="vertical-align:-3px"><path d="M2 2V18H18Z" fill="#ffe8cc" stroke="#333" stroke-width="1.5"/><path d="M2 14H6V18" fill="none" stroke="#333" stroke-width="1"/></svg>';
   var IC_SQ30 = '<svg width="26" height="16" viewBox="0 0 26 16" style="vertical-align:-2px"><path d="M1.5 1.5V14.5H24.5Z" fill="#d3f9d8" stroke="#333" stroke-width="1.5"/><path d="M1.5 11H5V14.5" fill="none" stroke="#333" stroke-width="1"/></svg>';
   var BGS = [['', '⬜ 空白'], ['dots', '⁙ 格點'], ['grid', '▦ 格線'], ['tian', '田 田字格'], ['zy', 'ㄅ 國字注音格'], ['paper', '✎ 作文稿紙'], ['ruled', '≡ 橫線']];
+  var ZYN = 1;
+  function addZyCell(n) {
+    var cs = Math.min(110, Math.floor(800 / n)), w = Math.round(cs * 1.35), hh = cs * n, c = center(w, hh); toSelect();
+    V.addObj({ id: WB.uid(), k: 'g', by: 'T', shape: 'zycell', rows: n, ar: true, x: c.x, y: Math.max(20, c.y), w: w, h: hh, r: 0, fx: false, sc: '#2f9e44', sw: 3, fill: false, op: 1 }); renderTools();
+  }
   function addAid(kind) {
     var D = {
       ruler: { w: 900, h: 90, n: 15, fill: true, fc: '#fff3bf', op: 0.92, sc: '#333333', sw: 1.5 },
@@ -573,6 +578,13 @@
       p.appendChild(el('div', 'pop-l tag t5', '📐 教具（放上去可以拖、縮放、旋轉）'));
       r = el('div', 'pop-row');
       [['ruler', '📏 直尺'], ['protr', IC_PROTR + ' 量角器'], ['sq45', IC_SQ45 + ' 三角板 45°'], ['sq30', IC_SQ30 + ' 三角板 30°60°'], ['numline', '↔️ 數線'], ['clock', '🕒 時鐘']].forEach(function (b) { r.appendChild(btn('btn', b[1], function () { closePop(); addAid(b[0]); })); });
+      p.appendChild(r);
+      p.appendChild(el('div', 'pop-l tag t5', '🈶 國字注音格（綠線，只能等比縮放）'));
+      r = el('div', 'pop-row');
+      r.appendChild(btn('btn sm', '－', function () { ZYN = Math.max(1, ZYN - 1); insertPanel(anchor); }));
+      r.appendChild(el('b', 'zyn', ZYN + ' 格'));
+      r.appendChild(btn('btn sm', '＋', function () { ZYN = Math.min(12, ZYN + 1); insertPanel(anchor); }));
+      r.appendChild(btn('btn primary', '貼上', function () { closePop(); addZyCell(ZYN); }));
       p.appendChild(r);
       p.appendChild(el('div', 'pop-l tag t4', '▦ 畫布背景（移動物件時會對齊格子）'));
       r = el('div', 'pop-row');
@@ -629,7 +641,14 @@
           [['每格 1', 1], ['每格 2', 2], ['每格 5', 5], ['每格 10', 10], ['每格 0.5', 0.5], ['每格 0.1', 0.1]].forEach(function (z) { rb.appendChild(btn('btn sm' + (ns === z[1] ? ' primary' : ''), z[0], function () { chg({ st: z[1] }); })); });
         }
       }
-      if (o.k === 't' || o.k === 'n' || o.k === 'g') {
+      if (o.k === 'g' && o.shape === 'zycell') {
+        m.appendChild(el('div', 'pop-l', '格數（往下增減，格子大小不變，框線固定綠色）'));
+        var rz2 = row(), zr = o.rows || 1, cs0 = o.h / zr;
+        rz2.appendChild(btn('btn sm', '－ 少一格', function () { if (zr > 1) chg({ rows: zr - 1, h: Math.round(cs0 * (zr - 1)) }); }));
+        rz2.appendChild(el('b', '', zr + ' 格'));
+        rz2.appendChild(btn('btn sm', '＋ 多一格', function () { if (zr < 20) chg({ rows: zr + 1, h: Math.round(cs0 * (zr + 1)) }); }));
+      }
+      if (o.k === 't' || o.k === 'n' || (o.k === 'g' && o.shape !== 'zycell')) {
         var r1 = row();
         r1.appendChild(btn('btn sm primary', '✏️ ' + (o.k === 'g' ? '在圖形裡打字' : '編輯文字'), function () { closePop(); V.editText(o.id); }));
         r1.appendChild(btn('btn sm', 'A－', function () { chg({ fs: Math.max(14, (o.fs || 32) - 6) }); }));
@@ -649,7 +668,7 @@
         if (o.bd) { rb.appendChild(btn('btn sm', '框－', function () { chg({ bw: Math.max(1, (o.bw || 3) - 1) }); })); rb.appendChild(btn('btn sm', '框＋', function () { chg({ bw: Math.min(20, (o.bw || 3) + 1) }); })); }
       }
       if (o.k === 'n') { m.appendChild(el('div', 'pop-l', '便利貼顏色')); m.appendChild(swatches(NOTE_COLORS.map(function (x) { return x[0]; }), o.c, function (c) { chg({ c: c }); }, 'mini')); }
-      if (o.k === 'g') {
+      if (o.k === 'g' && o.shape !== 'zycell') {
         m.appendChild(el('div', 'pop-l', '線條顏色'));
         m.appendChild(swatches(PALETTE, o.sc, function (c) { chg({ sc: c }); }, 'mini'));
         m.appendChild(el('div', 'pop-l', '填滿顏色'));
@@ -1936,7 +1955,7 @@
     '【物件種類 k】',
     '1. 文字 k:"t"：txt（文字，\\n 換行）、v（true 為直式文字）、fs（字級，18～120，標題 56～80、內文 32～44）、c（文字顏色，如 "#111111"）。可選 bd（外框顏色）與 bw（外框粗細）。w、h 要夠大：高度約 ≥ 字級 ×1.4 ×行數。',
     '2. 便利貼 k:"n"：c 只能是這六色之一 "#fff3a6"黃 "#ffd6e5"粉 "#cfe8ff"藍 "#d4f5d0"綠 "#e6d9ff"紫 "#ffe0c2"橙；txt、fs（14～80）。常用大小 w:220～340,h:220～300。',
-    '3. 圖形 k:"g"：shape 可為 rect、square、circle、ellipse、tri、rtri、trap、para、rhom、line、arrow、grid、poly，以及教具 ruler（直尺，n=公分數，預設 15）、protr（量角器）、numline（數線，nmin／nmax／st 為起點、終點、每格）、clock（時鐘，hh 時 0-11、mm 分 0-59，w 與 h 要相同）；sc（線色）、sw（線粗，1～12）、fill（是否填色）、fc（填色）、op（透明度 0～1，通常 1）。poly 要加 n（邊數 3～12）；grid 要加 rows、cols；line／arrow 要加 dir（1 或 -1）。圖形內可放字：txt、tc（字色）、fs。',
+    '3. 圖形 k:"g"：shape 可為 rect、square、circle、ellipse、tri、rtri、trap、para、rhom、line、arrow、grid、poly，以及教具 ruler（直尺，n=公分數，預設 15）、protr（量角器）、numline（數線，nmin／nmax／st 為起點、終點、每格）、clock（時鐘，hh 時 0-11、mm 分 0-59，w 與 h 要相同）、sq45／sq30（三角板，要加 ar:true、n:公分數）、zycell（國字注音格，rows 為格數，h＝格數×單格高，w＝單格高×1.35，ar:true，sc 固定 \"#2f9e44\"）；sc（線色）、sw（線粗，1～12）、fill（是否填色）、fc（填色）、op（透明度 0～1，通常 1）。poly 要加 n（邊數 3～12）；grid 要加 rows、cols；line／arrow 要加 dir（1 或 -1）。圖形內可放字：txt、tc（字色）、fs。',
     '4. YouTube 影片 k:"v"：yt（11 碼影片代號，例如網址 youtu.be/dQw4w9WgXcQ 的 dQw4w9WgXcQ）、st（起始秒數，預設 0）。建議 w:640,h:360。',
     '5. 圖片 k:"i"：src 是圖片代號，圖片本身的 data URL 要放在最上層 imgs 裡，例如 "imgs":{"im1":"data:image/jpeg;base64,…"}。你若拿不到圖片就不要放圖片物件，改用文字或圖形，並在區塊外提醒我之後自己用「➕插入 → 圖片」補上。',
     '6. 連結：用文字物件（k:"t"），txt 直接寫完整網址（https://…）即可，畫板會變成可以點的連結。',
@@ -1998,10 +2017,10 @@
   var HELP_USER =
     '<h4>🚀 一堂課的流程</h4><ol><li>打開老師端，看到上方的 <b>教室代碼</b>；按它會出現 QR code 和加入網址。</li><li>學生用平板／手機掃 QR code，或到學生網址輸入「教室代碼 + 學號」就能加入（學號只能數字，同一個學號不能同時在兩台裝置登入）。</li><li>你在畫板上寫、貼圖、放影片，學生的畫面會<b>即時同步</b>。</li><li>下課按「🚪 結束上課」，學生會被請出教室，下次上課是新的教室代碼。<b>要留的內容請先存成專案檔</b>。</li></ol>' +
     '<h4>🔀 三種模式（上方中間）</h4><ul><li><b>🧑‍🏫 上課模式</b>：你可以用所有工具，學生只能看（或依你開的權限寫）。</li><li><b>📽️ 簡報模式</b>：像 PPT 放映，只能翻頁（鍵盤 ← →、空白鍵，或畫面上的按鈕）、播放影片。</li><li><b>✏️ 作業模式</b>：學生在你指派的頁面上作答，有倒數計時，時間到會提醒。可以按「▶ 繼續作業」再給時間。</li></ul>' +
-    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、數線、時鐘；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
+    '<h4>🛠️ 工具欄（畫面側邊，可按「⇄」換左右）</h4><ul><li><b>筆</b>：原子筆、螢光筆、麥克筆、雷射筆（雷射筆 3 秒後消失，適合指重點）；黑／紅／藍三色快選，旁邊可選更多顏色與粗細。</li><li><b>橡皮擦</b>；<b>清除筆劃</b>（只清手寫）；<b>全清除</b>（整頁清空，可用「上一步」救回）。</li><li><b>選取</b>：點物件可移動、縮放、旋轉；在空白處拖一圈可<b>圈選多個</b>（含筆劃），一起搬、縮放、複製、刪除。按住 Shift（可在選取面板改鍵）再點，可一個一個加選。</li><li><b>圖形</b>：長方形、圓、三角、箭頭、格子、多邊形等，可填色、可在裡面打字。</li><li><b>➕插入</b>：便利貼、文字（橫／直式）、連結、YouTube 影片、圖片（選檔或直接貼上；也能<b>匯入 PDF 或多張圖片，每一頁變成一頁畫板</b>，可以直接在上面寫，簡報請先另存成 PDF，一次最多 40 頁）、<b>教具</b>（直尺、量角器、兩種三角板、數線、時鐘、國字注音格；數線選取後，拖兩端的黃色圓點可增減左右的數字；時鐘和數線在物件右鍵選單可以調整時間和範圍）、背景（空白、格點、格線、田字格、國字注音格、作文稿紙、橫線）。</li><li><b>全部鎖定</b>：鎖住後不會誤拖物件；單一物件也可以在右鍵選單鎖定。</li><li><b>🎲 課堂</b>：<b>隨機點名</b>（從在線學生抽，抽過的不再抽）、<b>抽籤</b>（自己輸入名單）、<b>分組抽籤</b>（分成幾組或每組幾人，可一鍵套用成分組）、<b>倒數計時</b>（老師和學生畫面都會顯示，時間到響聲）、<b>隱藏／揭曉</b>（把物件先藏起來學生看不到，要用時再揭曉；物件右鍵也有「🙈 先隱藏」）、<b>投票／選擇題</b>（學生畫面跳出作答按鈕，你即時看到每個選項幾人選、誰還沒答，可設正確答案再公布）、<b>作業一覽</b>（每位學生／每組畫板的縮圖，點進去可一起寫，上方 ◀ ▶ 逐一翻看；勾選「比較」可以把 2～6 位的畫板並排看）。</li><li><b>放大鏡</b>：按住快捷鍵＋滑鼠滾輪放大畫面，學生同步看到；快捷鍵可自訂，並會偵測有沒有被電腦系統佔用。放大後，<b>按住空白鍵（可改）再拖曳畫布</b>，上下左右都能移動；滑鼠中鍵拖曳也可以；平板用<b>兩根手指</b>拖曳。</li><li><b>動作 ▾</b>：<b>上一步</b>和<b>下一步</b>（復原與重做）。電腦上滑鼠移上去就會展開，平板和手機按一下展開；鍵盤 Ctrl／⌘+Z 是上一步，Ctrl／⌘+Y 是下一步。</li></ul>' +
     '<h4>🖱️ 小技巧</h4><ul><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
-    '<h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
+    '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
   $('b-help').onclick = function () { helpModal('u'); };
 
