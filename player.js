@@ -202,9 +202,12 @@
     nudgeEl = document.createElement('div'); nudgeEl.className = 'nudge'; nudgeEl.textContent = '👆 老師請你回到畫布，專心上課！（點一下關掉）';
     nudgeEl.onclick = function () { nudgeEl.remove(); nudgeEl = null; };
     document.body.appendChild(nudgeEl);
-    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
-    try { var AC = window.AudioContext || window.webkitAudioContext, c = new AC(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.25, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.6); o.start(); o.stop(c.currentTime + 0.65); } catch (e) {}
-    setTimeout(function () { if (nudgeEl) { nudgeEl.remove(); nudgeEl = null; } }, 15000);
+    /* 響鈴與震動持續 3 秒；文字會一直留著，等學生自己點掉 */
+    try { if (navigator.vibrate) navigator.vibrate([400, 100, 400, 100, 400, 100, 400, 100, 400, 100, 400]); } catch (e) {}
+    var k = 0, bt = setInterval(function () {
+      try { var AC = window.AudioContext || window.webkitAudioContext, c = new AC(), o = c.createOscillator(), g = c.createGain(); o.frequency.value = k % 2 ? 660 : 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(0.3, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.35); o.start(); o.stop(c.currentTime + 0.37); setTimeout(function () { try { c.close(); } catch (e) {} }, 700); } catch (e) {}
+      if (++k >= 6) clearInterval(bt);
+    }, 500);
   }
   function cdSet(d) {
     cdFired = false;
