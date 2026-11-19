@@ -537,3 +537,14 @@ body.host.dark .q-row{background:#2a3144}
 .ctx-bar{min-width:0;flex-wrap:nowrap!important;overflow:hidden}
 .ctx-bar>*{flex:none}
 .ctx-bar .ctx-t{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 快速選頁 */
+.pg-nav{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:26;display:flex;align-items:center;gap:6px;background:#fffffff0;border:1px solid var(--line);border-radius:999px;padding:3px 8px;box-shadow:0 2px 10px #0003;font-weight:700}
+.pg-nav .pn-b{border:0;background:transparent;font-size:22px;width:32px;height:32px;border-radius:50%;color:#445;line-height:1}
+.pg-nav .pn-b:disabled{opacity:.3}
+.pg-nav .pn-b:not(:disabled):hover{background:#e7f0ff}
+.pg-nav .pn-add{border:2px solid #667;border-radius:8px;font-size:20px;width:30px;height:30px}
+.pg-nav .pn-in{width:46px;text-align:center;border:2px solid #334;border-radius:999px;font-size:16px;font-weight:800;padding:2px 0}
+.pg-nav .pn-t{color:#556;min-width:34px}
+body.host.dark .pg-nav{background:#2a3144f0;color:var(--ink)}
+body.host.dark .pg-nav .pn-in{background:#1f2433;color:var(--ink);border-color:#667}
