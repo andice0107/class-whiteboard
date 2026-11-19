@@ -614,3 +614,12 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .wb-ibd{position:absolute;left:0;top:0;right:0;bottom:0;box-sizing:border-box;pointer-events:none}
 .bg-prev{background:repeating-conic-gradient(#ddd 0 25%,#fff 0 50%) 0 0/16px 16px;display:inline-block;line-height:0;border:1px solid #ccc}
 .bg-prev canvas{max-width:min(80vw,640px);max-height:46vh;display:block}
+.notes-list{max-height:200px;overflow:auto;border:1px solid #e3e6ef;border-radius:8px;padding:4px 8px;background:#fafbfe;margin-top:6px}
+.note-it{display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px solid #eef0f6;font-size:13px}
+.note-it:last-child{border-bottom:0}
+.nt-t{color:#8a90a2;font-variant-numeric:tabular-nums;flex:none}
+.nt-tag{flex:none;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;color:#fff}
+.nt-tag.sys{background:#7b61c9}.nt-tag.cls{background:#2b6cff}
+.nt-m{word-break:break-all}
+.note-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff8a00;margin-left:5px;vertical-align:middle;box-shadow:0 0 0 0 #ff8a00aa;animation:ndot 1s infinite}
+@keyframes ndot{0%{opacity:1;box-shadow:0 0 0 0 #ff8a00aa}50%{opacity:.35;box-shadow:0 0 0 6px #ff8a0000}100%{opacity:1;box-shadow:0 0 0 0 #ff8a0000}}
