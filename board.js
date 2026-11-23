@@ -647,10 +647,25 @@ window.WB = (function () {
       }).map(function (o) { return o.id; });
     }
     var taps = [];
-    stage.addEventListener('dblclick', function (e) {
+    var lastDbl = 0, lastTap = null;
+    stage.addEventListener('dblclick', function (e) { if (Date.now() - lastDbl < 800) return; dbl(e); });
+    /* iPad／手機：瀏覽器常常不會送出 dblclick，所以自己判斷「連點兩下」 */
+    stage.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' || !V.editable || V.locked || !e.isPrimary) return;
+      var p = pos(e), now = Date.now(), oo = objAt(p[0], p[1], ['t', 'n', 'g']);
+      if (oo && (oo.lk || (opt.canEdit && !opt.canEdit(oo)))) oo = null;
+      if (lastTap && oo && now - lastTap.t < 450 && lastTap.id === oo.id && Math.hypot(p[0] - lastTap.x, p[1] - lastTap.y) < 40) {
+        lastTap = null; lastDbl = now; e.preventDefault(); e.stopImmediatePropagation();
+        /* iPad 要在手指「放開」的那一刻才允許跳出鍵盤，所以等 pointerup 再開始編輯 */
+        var pe = e, go = function () { window.removeEventListener('pointerup', go, true); window.removeEventListener('pointercancel', go, true); dbl(pe, oo); };
+        window.addEventListener('pointerup', go, true); window.addEventListener('pointercancel', go, true); return;
+      }
+      lastTap = oo ? { id: oo.id, t: now, x: p[0], y: p[1] } : null;
+    }, true);
+    function dbl(e, oo) {
       if (!V.editable || V.locked) return;
       var p = pos(e), oe = e.target.closest && e.target.closest('.wb-t,.wb-n,.wb-g');
-      var o = oe ? find(oe.dataset.id) : objAt(p[0], p[1], ['t', 'n', 'g']);
+      var o = oo || (oe ? find(oe.dataset.id) : objAt(p[0], p[1], ['t', 'n', 'g']));
       if (!o || o.lk || (opt.canEdit && !opt.canEdit(o))) return;
       /* 用畫筆點兩下時，先把點出來的小點收回 */
       var now = Date.now(), tid = taps.filter(function (t) { return now - t.t < 900; }).map(function (t) { return t.id; }); taps = [];
@@ -661,7 +676,7 @@ window.WB = (function () {
       }
       if (V.tool.mode !== 'select' && opt.onWantSelect) opt.onWantSelect();
       V.editText(o.id);
-    });
+    }
     stage.addEventListener('contextmenu', function (e) {
       if (!opt.onContext) return;
       e.preventDefault();
