@@ -137,6 +137,7 @@
       onSelect: function () { renderTools(); },
       onOp: function (bid, op) { send({ t: 'op', bid: bid, op: op }); renderTools(); },
       onLive: function (bid, o) { send({ t: 'live', bid: bid, o: o }); },
+      onDragCancel: function () { send({ t: 'sync' }); },
       onWantSelect: function () { if (cur.note) setTool('select'); }
     });
     V.setTool(tool);

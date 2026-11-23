@@ -904,9 +904,9 @@ window.WB = (function () {
     top.addEventListener('pointerup', end); top.addEventListener('pointercancel', end);
     top.addEventListener('touchstart', function (e) { if (V.editable) e.preventDefault(); }, { passive: false });
 
-    V.load = function (bid, objs) { finishEdit(); V.sel = null; V.multi = null; lasso = null; gdrag = null; opt.onMulti && opt.onMulti(0); if (opt.onSelect) opt.onSelect(null); V.bid = bid; V.objs = objs; lives = {}; mine = null; erasing = null; shaping = null; zooming = null; dirty = true; };
+    V.load = function (bid, objs) { finishEdit(); V.sel = null; V.multi = null; lasso = null; gdrag = null; dragStart = null; opt.onMulti && opt.onMulti(0); if (opt.onSelect) opt.onSelect(null); V.bid = bid; V.objs = objs; lives = {}; mine = null; erasing = null; shaping = null; zooming = null; dirty = true; };
     V.find = find;
-    V.apply = function (bid, op) { if (bid !== V.bid) return; applyOp(V.objs, op); (op.add || []).forEach(function (o) { delete lives[o.id]; }); dirty = true; };
+    V.apply = function (bid, op) { if (bid !== V.bid) return; applyOp(V.objs, op); (op.add || []).forEach(function (o) { delete lives[o.id]; }); dirty = true; if (opt.canEdit) cancelDragIfDenied(); };
     V.live = function (bid, o) { if (bid !== V.bid) return; lives[o.id] = { o: o, t: Date.now() }; };
     V.clearLives = function () { lives = {}; };
     V.undo = function () {
@@ -966,8 +966,19 @@ window.WB = (function () {
       var rem = V.objs.slice(); if (!rem.length) return false;
       select(null); applyOp(V.objs, { del: rem.map(function (o) { return o.id; }) }); dirty = true; commit([], rem); return true;
     };
+    /* 權限被收回時：馬上中斷正在進行的拖動（手指還按著也一樣），並請外面重新同步 */
+    function dragAllowed() {
+      var ids = dragStart ? [dragStart.o.id] : gdrag ? Object.keys(gdrag.origs) : [];
+      return ids.every(function (id) { var q = find(id); return q && (!opt.canEdit || opt.canEdit(q)); });
+    }
+    function cancelDragIfDenied() {
+      if (!(dragStart || gdrag)) return;
+      if (V.editable && dragAllowed()) return;
+      dragStart = null; gdrag = null; dirty = true; if (V.sel) select(null); if (V.multi) V.setMulti(null);
+      opt.onDragCancel && opt.onDragCancel();
+    }
     V.setEditable = function (b) {
-      V.editable = b; var m = V.tool.mode, draw = b && (m === 'pen' || m === 'erase' || m === 'shape' || m === 'zoom' || m === 'lasso');
+      V.editable = b; cancelDragIfDenied(); var m = V.tool.mode, draw = b && (m === 'pen' || m === 'erase' || m === 'shape' || m === 'zoom' || m === 'lasso');
       top.style.pointerEvents = draw ? 'auto' : 'none';
       top.style.cursor = m === 'erase' ? 'cell' : m === 'zoom' ? 'zoom-in' : 'crosshair'; top.style.touchAction = draw ? 'none' : 'auto';
       stage.classList.toggle('selecting', b && m === 'select' && !V.locked);
