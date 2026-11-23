@@ -132,7 +132,7 @@
     V = WB.view(bh, {
       me: me.sid,
       canErase: function (o) { return o.by !== 'T'; },
-      canEdit: function (o) { return o && o.k === 'n' && o.by === me.sid && !!cur.note; },
+      canEdit: function (o) { return o && ((o.k === 'n' && o.by === me.sid && !!cur.note) || (o.mv && o.k !== 's' && o.k !== 'v' && !o.lk && !!cur.mv)); },
       lockVideos: true,
       onSelect: function () { renderTools(); },
       onOp: function (bid, op) { send({ t: 'op', bid: bid, op: op }); renderTools(); },
@@ -155,14 +155,17 @@
     var s = document.createElement('span'); s.textContent = '第 ' + d.pgn + ' / ' + d.pgt + ' 頁' + (d.pgf ? '' : '（老師會帶你換頁）'); bx.appendChild(s);
     if (d.pgf) mk('›', function () { send({ t: 'goto', d: 1 }); }, d.pgn >= d.pgt);
   }
+  var lastMv = false;
   function setMeta(d) {
     cur = d;
     var t = document.querySelector('.stu-title'); if (t) t.textContent = d.title || '';
     endAt = d.left != null ? Date.now() + d.left : null;
-    var can = !!(d.pen || d.note);
-    if (!d.pen && (tool.mode === 'pen' || tool.mode === 'erase')) tool.mode = d.note ? 'select' : 'none';
-    if (!d.note && tool.mode === 'select') tool.mode = d.pen ? 'pen' : 'none';
+    var can = !!(d.pen || d.note || d.mv);
+    if (!d.pen && (tool.mode === 'pen' || tool.mode === 'erase')) tool.mode = (d.note || d.mv) ? 'select' : 'none';
+    if (!d.note && !d.mv && tool.mode === 'select') tool.mode = d.pen ? 'pen' : 'none';
     if (d.pen && !d.note && tool.mode === 'none' && !cur._seen) tool.mode = 'pen';
+    if (d.mv && !d.pen && !d.note && !lastMv) tool.mode = 'select';
+    lastMv = !!d.mv;
     cur._seen = true;
     V.setTool(tool); V.setEditable(can);
     V.setBg(d.bg || '');
@@ -245,7 +248,7 @@
   function renderTools() {
     var tb = document.querySelector('.stu-tools'); if (!tb) return;
     tb.innerHTML = '';
-    if (!cur.pen && !cur.note) {
+    if (!cur.pen && !cur.note && !cur.mv) {
       tb.appendChild(el('span', 'lock-note', cur.mode === 'work' || /作業/.test(cur.title || '') ? (/🔒|暫停/.test(cur.title || '') ? '🔒 老師暫停了你們的操作' : '🚫 老師目前沒有開放畫筆') : '👀 請看老師的畫面'));
       return;
     }
@@ -253,6 +256,7 @@
       tb.appendChild(btn('tb' + (tool.mode === 'pen' ? ' on' : ''), '✏️<small>黑筆</small>', function () { setTool('pen'); }));
       tb.appendChild(btn('tb' + (tool.mode === 'erase' ? ' on' : ''), '🧽<small>橡皮擦</small>', function () { setTool('erase'); }));
     }
+    if (cur.mv && !cur.note) tb.appendChild(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動物件</small>', function () { setTool('select'); }));
     if (cur.note) {
       var nb = btn('tb', '📝<small>便利貼</small>', function () {
         var box = document.querySelector('.note-pick'); if (box) { box.remove(); return; }
@@ -261,7 +265,7 @@
         tb.appendChild(box);
       });
       tb.appendChild(nb);
-      tb.appendChild(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>移動便利貼</small>', function () { setTool('select'); }));
+      tb.appendChild(btn('tb' + (tool.mode === 'select' ? ' on' : ''), '🖐️<small>' + (cur.mv ? '移動' : '移動便利貼') + '</small>', function () { setTool('select'); }));
     }
     tb.appendChild(btn('tb' + (tool.mode === 'none' ? ' on' : ''), '👆<small>點連結</small>', function () { setTool('none'); }));
     var u = btn('tb', '↩️<small>上一步</small>', function () { V.undo(); renderTools(); }); u.disabled = !V.canUndo(); tb.appendChild(u);

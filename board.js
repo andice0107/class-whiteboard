@@ -458,6 +458,7 @@ window.WB = (function () {
       var b = groupBox(list), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, locked = list.some(function (o) { return o.lk; });
       if (kind === 'grp') { if (list.length < 2) return; var gid = 'G' + uid(); groupCommit(list.map(function (o) { var n = clone(o); n.gp = gid; return n; }), list); return; }
       if (kind === 'ungrp') { groupCommit(list.filter(function (o) { return o.gp; }).map(function (o) { var n = clone(o); delete n.gp; return n; }), list.filter(function (o) { return o.gp; })); return; }
+      if (kind === 'mv') { groupCommit(list.filter(function (o) { return o.k !== 's' && o.k !== 'v'; }).map(function (o) { var n = clone(o); if (val) n.mv = true; else delete n.mv; return n; }), list.filter(function (o) { return o.k !== 's' && o.k !== 'v'; })); return; }
       if (kind === 'lock') { groupCommit(list.map(function (o) { var n = clone(o); if (val) n.lk = true; else delete n.lk; return n; }), list); sel._id = null; return; }
       if (kind === 'hide') { groupCommit(list.filter(function (o) { return o.k !== 's'; }).map(function (o) { var n = clone(o); if (val) n.hd = true; else delete n.hd; return n; }), list.filter(function (o) { return o.k !== 's'; })); return; }
       if (kind === 'dup') {
@@ -549,7 +550,7 @@ window.WB = (function () {
       }
       if (o.gp && !h && V.editable && !V.locked && editing !== o.id) {
         var gm = V.multi && V.multi.indexOf(o.id) >= 0 ? V.multi : expand([o.id]);
-        if (gm.length > 1) { e.preventDefault(); if (V.sel) select(null); if (gm !== V.multi) V.setMulti(gm); groupDown(e, 'gmove'); return; }
+        if (gm.length > 1 && gm.every(function (id) { var q = find(id); return q && (!opt.canEdit || opt.canEdit(q)); })) { e.preventDefault(); if (V.sel) select(null); if (gm !== V.multi) V.setMulti(gm); groupDown(e, 'gmove'); return; }
       }
       if (editing === o.id) return;
       e.preventDefault();

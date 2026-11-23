@@ -153,14 +153,15 @@
     var isSrc = S.cast && S.cast.src === gid;
     var target = cb && !isSrc && (!S.cast.to || S.cast.to.indexOf(gid) >= 0);
     var end = S.mode === 'work' ? S.workEnd : null;
-    if (target) return { bid: cb, pen: false, note: false, title: '📽️ 老師正在分享' + (S.cast.src === 'T' ? '老師' : '「' + gname(S.cast.src) + '」') + '的畫面', mode: S.mode, end: end, vp: S.cast.src === 'T' ? S.zoom : null };
+    if (target) return { bid: cb, pen: false, note: false, mv: false, title: '📽️ 老師正在分享' + (S.cast.src === 'T' ? '老師' : '「' + gname(S.cast.src) + '」') + '的畫面', mode: S.mode, end: end, vp: S.cast.src === 'T' ? S.zoom : null };
     var mayWork = g && g.cur && page(g.cur) && (S.mode === 'work' || isSrc);
     if (mayWork) {
       var free = !g.lock && !(isSrc && S.cast.pen === false);
-      return { bid: 'G:' + gid, pen: free && penOK(sid), note: free && noteOK(gid), title: (isSrc ? '📽️ 你們的畫面正在分享給大家・' : '✏️ 作業時間・') + '第 ' + pageNo(g.cur) + ' 頁' + (g.custom ? '（' + gname(gid) + '）' : '') + (g.lock ? '・🔒 老師暫停操作' : ''), mode: S.mode, end: end, vp: null };
+      return { bid: 'G:' + gid, pen: free && penOK(sid), note: free && noteOK(gid), mv: free && hasMv('G:' + gid), title: (isSrc ? '📽️ 你們的畫面正在分享給大家・' : '✏️ 作業時間・') + '第 ' + pageNo(g.cur) + ' 頁' + (g.custom ? '（' + gname(gid) + '）' : '') + (g.lock ? '・🔒 老師暫停操作' : ''), mode: S.mode, end: end, vp: null };
     }
-    return { bid: 'P:' + S.cur, pen: false, note: false, title: S.mode === 'work' ? '⏳ 老師還沒有指派畫板給你，先看老師的畫面' : S.mode === 'show' ? '📽️ 簡報中：看老師的畫面' : '🧑‍🏫 上課中：看老師的畫面', mode: S.mode, end: end, vp: S.mode !== 'work' ? S.zoom : null };
+    return { bid: 'P:' + S.cur, pen: false, note: false, mv: S.mode === 'present' && hasMv('P:' + S.cur), title: S.mode === 'work' ? '⏳ 老師還沒有指派畫板給你，先看老師的畫面' : S.mode === 'show' ? '📽️ 簡報中：看老師的畫面' : '🧑‍🏫 上課中：看老師的畫面', mode: S.mode, end: end, vp: S.mode !== 'work' ? S.zoom : null };
   }
+  function hasMv(bid) { return (objsOf(bid) || []).some(function (o) { return o.mv && o.k !== 's' && o.k !== 'v' && !o.lk; }); }
   function genOf(bid) { if (bid.slice(0, 2) === 'G:') { var g = S.groups[bid.slice(2)]; return g ? g.cur : ''; } return ''; }
   function pgMeta(sid, v) {
     var st = S.students[sid], g = st && S.groups[st.gid];
@@ -180,15 +181,15 @@
     gids.forEach(function (gid) { var g = S.groups[gid]; if (!g || !g.pages) return; var i = g.pages.indexOf(g.cur) + d; if (i < 0 || i >= g.pages.length) return; assign(gid, g.pages[i], true); n++; });
     save(); refreshAll(); renderPages(); renderTask(); toast(n ? '已讓 ' + n + ' 組換到' + (d > 0 ? '下一頁' : '上一頁') : '沒有可以換頁的組別（已經是' + (d > 0 ? '最後' : '第一') + '頁了，或還沒有指派多頁）');
   }
-  function metaKey(v) { return [v.pen, v.note, v.title, v.mode, v.end, JSON.stringify(v.vp), bgOf(v.bid)].join('|'); }
+  function metaKey(v) { return [v.pen, v.note, v.mv, v.title, v.mode, v.end, JSON.stringify(v.vp), bgOf(v.bid)].join('|'); }
   function refresh(sid, force) {
     var st = S.students[sid]; if (!st || !online[sid]) return;
-    var v = viewFor(sid), L = lastSent[sid], m = { cid: st.cid, bid: v.bid, pen: v.pen, note: v.note, title: v.title, mode: v.mode, left: v.end ? Math.max(0, v.end - Date.now()) : null, vp: v.vp, bg: bgOf(v.bid) };
+    var v = viewFor(sid), L = lastSent[sid], m = { cid: st.cid, bid: v.bid, pen: v.pen, note: v.note, mv: !!v.mv, title: v.title, mode: v.mode, left: v.end ? Math.max(0, v.end - Date.now()) : null, vp: v.vp, bg: bgOf(v.bid) };
     var pgx = pgMeta(sid, v); m.pgn = pgx.pgn; m.pgt = pgx.pgt; m.pgf = pgx.pgf;
     if (force || !L || L.bid !== v.bid || L.gen !== genOf(v.bid)) { m.t = 'view'; m.objs = objsOf(v.bid) || []; net.send(m, sid);
       if (V && V.bid === v.bid) m.objs.forEach(function (o) { var vs = o.k === 'v' && V.vt[o.id]; if (vs && vs.s === 1) net.send({ t: 'vid', bid: v.bid, id: o.id, cmd: 'play', at: vs.t || 0 }, sid); }); }
     else if (L.key !== metaKey(v) + '|' + pgx.pgn + '/' + pgx.pgt + pgx.pgf) { m.t = 'meta'; net.send(m, sid); }
-    lastSent[sid] = { bid: v.bid, gen: genOf(v.bid), key: metaKey(v) + '|' + pgx.pgn + '/' + pgx.pgt + pgx.pgf, pen: v.pen, note: v.note };
+    lastSent[sid] = { bid: v.bid, gen: genOf(v.bid), key: metaKey(v) + '|' + pgx.pgn + '/' + pgx.pgt + pgx.pgf, pen: v.pen, note: v.note, mv: !!v.mv };
   }
   function refreshAll(force) { Object.keys(S.students).forEach(function (s) { refresh(s, force); }); }
   /* 學生離開畫布提醒 */
@@ -267,18 +268,25 @@
     if (d.t === 'goto') { studentGoto(sid, +d.d); return; }
     var L = lastSent[sid];
     if (d.t === 'op') {
-      if (!L || d.bid !== L.bid || (!L.pen && !L.note)) { refresh(sid, true); return; }
+      if (!L || d.bid !== L.bid || (!L.pen && !L.note && !L.mv)) { refresh(sid, true); return; }
       var objs = objsOf(d.bid); if (!objs) return;
       var op = d.op || {}, byId = {}; objs.forEach(function (o) { byId[o.id] = o; });
       var addIds = {}; (op.add || []).forEach(function (o) { if (o && o.id) addIds[o.id] = 1; });
       var del = (op.del || []).filter(function (id) {
-        var o = byId[id]; if (!o || o.by === 'T') return false;
+        var o = byId[id]; if (!o) return false;
+        if (o.mv && L.mv && o.k !== 's' && o.k !== 'v' && !o.lk && addIds[id]) return true;
+        if (o.by === 'T') return false;
         if (o.k === 's') return L.pen; if (o.k === 'n') return L.note && o.by === sid; return false;
       });
       var add = [];
       (op.add || []).forEach(function (o) {
         if (!o || !o.id) return;
         var ex = byId[o.id];
+        if (ex && ex.mv && L.mv && ex.k !== 's' && ex.k !== 'v' && !ex.lk) {
+          var nm = WB.clone(ex), cl2 = function (v, a, z, dflt) { v = +v; return isFinite(v) ? Math.max(a, Math.min(z, Math.round(v))) : dflt; };
+          nm.x = cl2(o.x, -600, 2200, ex.x); nm.y = cl2(o.y, -600, 1500, ex.y); nm.w = cl2(o.w, 20, 2400, ex.w); nm.h = cl2(o.h, 20, 1600, ex.h);
+          nm.r = ((cl2(o.r, -3600, 3600, ex.r || 0) % 360) + 360) % 360; add.push(nm); return;
+        }
         if (o.k === 's' && L.pen && o.by !== 'T' && Array.isArray(o.p) && o.p.length < 20000 && (!ex || ex.k === 's'))
           add.push({ id: String(o.id), k: 's', by: String(o.by), c: '#111111', w: Math.min(12, Math.max(1, +o.w || 4)), p: o.p });
         else if (o.k === 'n' && L.note && (!ex || (ex.k === 'n' && ex.by === sid))) add.push(cleanNote(o, sid));
@@ -304,6 +312,7 @@
   }, 5000);
 
   /* ---------- 老師的畫板 ---------- */
+  var mvCache = {};
   var V = WB.view($('board-host'), {
     me: 'T', canErase: function () { return true; },
     onOp: function (bid, op, temp) {
@@ -311,6 +320,7 @@
       WB.applyOp(objsOf(bid) || [], op);
       distribute(bid, { t: 'op', op: op });
       boardChanged(bid); save(); if (!temp) renderTools();
+      if (!temp) { var nmv = hasMv(bid); if (mvCache[bid] !== nmv) { mvCache[bid] = nmv; refreshAll(); } }
       if (layerBox && !temp) layersDraw();
     },
     onSelect: function (o) { if (pop && pop._obj && (!o || pop._obj !== o.id)) closePop(); if (layerBox) layersDraw(); },
@@ -676,6 +686,8 @@
       p.classList.add('objmenu');
       p.appendChild(el('div', 'pop-h', '⭕ 已圈選 ' + list.length + ' 個物件'));
       function mi(h, fn, cls) { var b = btn('mi' + (cls ? ' ' + cls : ''), h, function () { fn(); }); p.appendChild(b); return b; }
+      var mvl = list.filter(function (o) { return o.k !== 's' && o.k !== 'v'; });
+      if (mvl.length) { var mvOn = mvl.every(function (o) { return o.mv; }); mi(mvOn ? '👩‍🎓 學生可以拖動：開（按一下全部關閉）' : '👩‍🎓 開放學生拖動這些物件（移動、縮放、旋轉）', function () { closePop(); V.groupOp('mv', !mvOn); renderTools(); }); }
       var grpd = list.some(function (o) { return o.gp; }), oneGrp = list.length >= 2 && list.every(function (o) { return o.gp && o.gp === list[0].gp; });
       if (list.length >= 2 && !oneGrp) mi('🔗 組成群組（之後一起移動、縮放、旋轉）', function () { closePop(); V.groupOp('grp'); toast('🔗 已組成群組（' + list.length + ' 個物件）'); renderTools(); });
       if (grpd) mi('✂️ 解除群組（可以分開編輯）', function () { closePop(); V.groupOp('ungrp'); toast('已解除群組'); renderTools(); });
@@ -887,6 +899,7 @@
       if (o.k !== 'n' && o.k !== 'v') ra.appendChild(btn('btn sm' + (o.fx ? ' primary' : ''), '🪞 鏡像', function () { chg({ fx: !o.fx }); }));
       if (o.k === 'v') m.appendChild(el('div', 'pop-l', '🎬 直接按影片上的播放、暫停或拖時間軸，學生的這部影片會跟著同步。'));
       if (o.k === 'v') { var spb = btn('btn sm' + (o.sp ? ' primary' : ''), o.sp ? '👩‍🎓 學生可以自己點開播放：開' : '👩‍🎓 學生可以自己點開播放：關', function () { var nv = !o.sp; chg({ sp: nv }); propagateSp(o, nv); }); m.appendChild(spb); m.appendChild(el('div', 'pop-l', '關閉時學生只看到影片的封面圖、不能點；你按播放時學生那邊還是會跟著播放。指派作業前先設好；作業中要進共做畫面才能改學生那一份。')); }
+      if (o.k !== 'v' && o.k !== 's') m.appendChild(btn('mi' + (o.mv ? ' on' : ''), o.mv ? '👩‍🎓 學生可以拖動這個物件：開（按一下關閉）' : '👩‍🎓 學生可以拖動這個物件：關（按一下開放）', function () { chg({ mv: o.mv ? false : true }); }));
       var rz = row();
       rz.appendChild(btn('btn sm', '📄 複製', function () { var n = WB.clone(o); n.id = WB.uid(); n.x += 40; n.y += 40; delete n.lk; closePop(); V.addObj(n); renderTools(); }));
       rz.appendChild(el('span', 'grow'));
@@ -2725,6 +2738,7 @@
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>🔔 通知記錄</h4><p>必跳通知（會記錄、橘點閃，並在畫面上方留一張橘框提示卡，按 ✕ 才消失）有：Google 要求重新連線（卡上有重新連線按鈕）、教室連線中斷／恢復、自動存失敗、全班投票完成、倒數計時到、學號被重複使用。還包括：教室連線中斷／恢復、這台電腦無法自動儲存、Google 雲端快到期、倒數計時和作業時間到、全班投票完成。橘色閃爍光點只在「系統」通知（雲端、連線問題）和「學生狀態」（離開畫布、回來、斷線、進入教室、學號被重複使用、換裝置）出現；一般的畫、移動、改物件只記在「課程」記錄，不閃。「💾 專案」→ 下方「通知記錄」，分「系統」（存專案、雲端、連線問題）和「課程」（課堂操作、物件新增修改刪除）兩類，從這次登入開始記，重新登入會重記。儲存專案這類通知只記錄不跳出；有新通知時「專案」旁會有橘色閃爍光點，打開查看後消失。</p>'+
     '<h4>☁️ 自動儲存</h4><p>專案存到「我的專案」之後，你每次修改，停手約 6 秒就會自動同步到雲端同一個專案，不用再按存。要另存新版本請按「另存成一份新的」。要保留舊版本，請先另存再修改。</p>'+
+    '<h4>👩‍🎓 讓學生拖動物件</h4><p>在物件（或圈選／群組）的右鍵選單按「學生可以拖動」：開了的物件，學生可以移動、縮放、旋轉，但不能改內容、不能刪除、不能解鎖。上課模式全班看同一個畫面，學生拖了全班都會看到；作業模式每組各自在自己的畫布上拖。想收回再按一次就關。簡報模式和暫停時學生不能拖。</p>'+
     '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
     '<h4>🖼️ 編輯圖片</h4><p>在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
