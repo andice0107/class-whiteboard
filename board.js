@@ -443,14 +443,26 @@ window.WB = (function () {
       hist().push({ add: news, rem: origs }); if (hist().length > 80) hist().shift();
       opt.onOp && opt.onOp(V.bid, { del: news.map(function (o) { return o.id; }), add: news });
     }
-    V.setMulti = function (ids) { V.multi = ids && ids.length ? ids : null; sel._id = null; dirty = true; opt.onMulti && opt.onMulti(V.multi ? V.multi.length : 0); };
+    /* 群組：同一個 gp 的物件一起被選取、一起動 */
+    function expand(ids) {
+      if (!ids || !ids.length) return ids;
+      var gs = {}, out = ids.slice(); ids.forEach(function (id) { var o = find(id); if (o && o.gp) gs[o.gp] = 1; });
+      if (!Object.keys(gs).length) return out;
+      V.objs.forEach(function (o) { if (o.gp && gs[o.gp] && out.indexOf(o.id) < 0) out.push(o.id); });
+      return out;
+    }
+    V.expandGroup = expand;
+    V.setMulti = function (ids) { ids = expand(ids); V.multi = ids && ids.length ? ids : null; sel._id = null; dirty = true; opt.onMulti && opt.onMulti(V.multi ? V.multi.length : 0); };
     V.groupOp = function (kind, val) {
       var list = members(); if (!list.length) return;
       var b = groupBox(list), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, locked = list.some(function (o) { return o.lk; });
+      if (kind === 'grp') { if (list.length < 2) return; var gid = 'G' + uid(); groupCommit(list.map(function (o) { var n = clone(o); n.gp = gid; return n; }), list); return; }
+      if (kind === 'ungrp') { groupCommit(list.filter(function (o) { return o.gp; }).map(function (o) { var n = clone(o); delete n.gp; return n; }), list.filter(function (o) { return o.gp; })); return; }
       if (kind === 'lock') { groupCommit(list.map(function (o) { var n = clone(o); if (val) n.lk = true; else delete n.lk; return n; }), list); sel._id = null; return; }
       if (kind === 'hide') { groupCommit(list.filter(function (o) { return o.k !== 's'; }).map(function (o) { var n = clone(o); if (val) n.hd = true; else delete n.hd; return n; }), list.filter(function (o) { return o.k !== 's'; })); return; }
       if (kind === 'dup') {
-        var cp = list.map(function (o) { var n = xform(o, { cx: 0, cy: 0, dx: 40, dy: 40 }); n.id = uid(); delete n.lk; return n; });
+        var gmap = {};
+        var cp = list.map(function (o) { var n = xform(o, { cx: 0, cy: 0, dx: 40, dy: 40 }); n.id = uid(); delete n.lk; if (o.gp) { gmap[o.gp] = gmap[o.gp] || ('G' + uid()); n.gp = gmap[o.gp]; } return n; });
         cp.forEach(function (n) { V.objs.push(n); }); dirty = true; commit(cp, []); V.setMulti(cp.map(function (n) { return n.id; })); return;
       }
       if (locked) return opt.onLockedHint && opt.onLockedHint();
@@ -534,6 +546,10 @@ window.WB = (function () {
           try { stage.setPointerCapture(e.pointerId); } catch (x) {}
         }
         return;
+      }
+      if (o.gp && !h && V.editable && !V.locked && editing !== o.id) {
+        var gm = V.multi && V.multi.indexOf(o.id) >= 0 ? V.multi : expand([o.id]);
+        if (gm.length > 1) { e.preventDefault(); if (V.sel) select(null); if (gm !== V.multi) V.setMulti(gm); groupDown(e, 'gmove'); return; }
       }
       if (editing === o.id) return;
       e.preventDefault();
@@ -653,6 +669,7 @@ window.WB = (function () {
       if (V.multi && opt.onGroupMenu) { var gb = groupBox(); if (gb && p[0] >= gb[0] - 8 && p[0] <= gb[2] + 8 && p[1] >= gb[1] - 8 && p[1] <= gb[3] + 8) return opt.onGroupMenu(e.clientX, e.clientY); }
       var o = objAt(p[0], p[1]);
       if (o && opt.canEdit && !opt.canEdit(o)) o = null;
+      if (o && o.gp && opt.onGroupMenu) { var gm2 = expand([o.id]); if (gm2.length > 1) { select(null); V.setMulti(gm2); return opt.onGroupMenu(e.clientX, e.clientY); } }
       opt.onContext(o, e.clientX, e.clientY);
     });
     var zHeld = false;

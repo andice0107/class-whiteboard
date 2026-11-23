@@ -676,6 +676,9 @@
       p.classList.add('objmenu');
       p.appendChild(el('div', 'pop-h', '⭕ 已圈選 ' + list.length + ' 個物件'));
       function mi(h, fn, cls) { var b = btn('mi' + (cls ? ' ' + cls : ''), h, function () { fn(); }); p.appendChild(b); return b; }
+      var grpd = list.some(function (o) { return o.gp; }), oneGrp = list.length >= 2 && list.every(function (o) { return o.gp && o.gp === list[0].gp; });
+      if (list.length >= 2 && !oneGrp) mi('🔗 組成群組（之後一起移動、縮放、旋轉）', function () { closePop(); V.groupOp('grp'); toast('🔗 已組成群組（' + list.length + ' 個物件）'); renderTools(); });
+      if (grpd) mi('✂️ 解除群組（可以分開編輯）', function () { closePop(); V.groupOp('ungrp'); toast('已解除群組'); renderTools(); });
       mi(lk ? '🔓 全部解除鎖定' : '🔒 全部鎖定', function () { closePop(); V.groupOp('lock', !lk); renderTools(); });
       var lids = list.filter(function (o) { return o.k !== 's'; }).map(function (o) { return o.id; });
       if (lids.length) { var lr = el('div', 'pop-row'); lr.appendChild(el('span', '', '圖層')); [['⤒ 置頂', 'front'], ['↑ 上移', 'up'], ['↓ 下移', 'down'], ['⤓ 置底', 'back']].forEach(function (z) { lr.appendChild(btn('btn sm', z[0], function () { V.reorder(lids, z[1]); })); }); p.appendChild(lr); }
@@ -992,6 +995,9 @@
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'a' || e.key === 'A') && !ed && S && S.mode !== 'show' && $('modal').hidden) {
       e.preventDefault(); if (!V.objs.length) return toast('這一頁沒有物件可以選');
       closePop(); setMode('select'); V.select(null); V.setMulti(V.objs.map(function (o) { return o.id; })); renderTools(); toast('已全選這一頁的 ' + V.objs.length + ' 個物件'); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'g' || e.key === 'G') && !ed && S.mode !== 'show' && $('modal').hidden && V.multi) {
+      e.preventDefault(); if (e.shiftKey) { V.groupOp('ungrp'); toast('已解除群組'); } else if (V.multi.length > 1) { V.groupOp('grp'); toast('🔗 已組成群組（' + V.multi.length + ' 個物件）'); } renderTools(); return;
     }
     if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y' || ((e.key === 'z' || e.key === 'Z') && e.shiftKey)) && !ed) { e.preventDefault(); V.redo(); renderTools(); }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !ed) { e.preventDefault(); V.undo(); renderTools(); }
@@ -2719,6 +2725,7 @@
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>🔔 通知記錄</h4><p>必跳通知（會記錄、橘點閃，並在畫面上方留一張橘框提示卡，按 ✕ 才消失）有：Google 要求重新連線（卡上有重新連線按鈕）、教室連線中斷／恢復、自動存失敗、全班投票完成、倒數計時到、學號被重複使用。還包括：教室連線中斷／恢復、這台電腦無法自動儲存、Google 雲端快到期、倒數計時和作業時間到、全班投票完成。橘色閃爍光點只在「系統」通知（雲端、連線問題）和「學生狀態」（離開畫布、回來、斷線、進入教室、學號被重複使用、換裝置）出現；一般的畫、移動、改物件只記在「課程」記錄，不閃。「💾 專案」→ 下方「通知記錄」，分「系統」（存專案、雲端、連線問題）和「課程」（課堂操作、物件新增修改刪除）兩類，從這次登入開始記，重新登入會重記。儲存專案這類通知只記錄不跳出；有新通知時「專案」旁會有橘色閃爍光點，打開查看後消失。</p>'+
     '<h4>☁️ 自動儲存</h4><p>專案存到「我的專案」之後，你每次修改，停手約 6 秒就會自動同步到雲端同一個專案，不用再按存。要另存新版本請按「另存成一份新的」。要保留舊版本，請先另存再修改。</p>'+
+    '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
     '<h4>🖼️ 編輯圖片</h4><p>在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
