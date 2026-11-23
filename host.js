@@ -2075,6 +2075,7 @@
       box.appendChild(myProjectsSection());
       box.appendChild(notesSection());
       box.appendChild(el('div', 'pop-l sec', '📁 專案檔（存在這台電腦）'));
+      box.appendChild(el('p', 'hint', '💡 也可以把專案檔直接拖到這個視窗裡打開。'));
       var r = el('div', 'proj-acts');
       r.appendChild(btn('btn primary', '💾 存成專案檔', saveProjectFile));
       r.appendChild(btn('btn', '📂 開啟專案檔', function () { $('proj-in').click(); }));
@@ -2098,15 +2099,33 @@
       var row = el('div', 'modal-btns'); row.appendChild(btn('btn', '關閉', closeModal)); box.appendChild(row);
     });
   };
-  $('proj-in').onchange = function () {
-    var f = this.files[0]; this.value = ''; if (!f) return;
+  $('proj-in').onchange = function () { var f = this.files[0]; this.value = ''; openProjFile(f); };
+  /* 把專案檔拖進「專案」視窗就能載入；其他地方亂放檔案不會讓瀏覽器跳走 */
+  function hasFiles(e) { return e.dataTransfer && [].indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
+  window.addEventListener('dragover', function (e) { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', function (e) { if (hasFiles(e)) e.preventDefault(); });
+  (function () {
+    var m = $('modal'), isProj = function () { return !m.hidden && $('modal-box').classList.contains('proj-box'); };
+    m.addEventListener('dragover', function (e) { if (isProj() && hasFiles(e)) { e.preventDefault(); $('modal-box').classList.add('drop-on'); } });
+    m.addEventListener('dragleave', function (e) { if (e.target === m || !m.contains(e.relatedTarget)) $('modal-box').classList.remove('drop-on'); });
+    m.addEventListener('drop', function (e) {
+      $('modal-box').classList.remove('drop-on');
+      if (!isProj() || !hasFiles(e)) return; e.preventDefault();
+      var fs = [].slice.call(e.dataTransfer.files || []); if (!fs.length) return;
+      if (fs.length > 1) toast('一次只能開一個專案檔，先開第一個「' + fs[0].name + '」');
+      openProjFile(fs[0]);
+    });
+  })();
+  function openProjFile(f) {
+    if (!f) return;
+    if (f.size > 120 * 1024 * 1024) return toast('檔案太大了（超過 120 MB），打不開');
     var fr = new FileReader();
     fr.onload = function () {
-      var d; try { d = JSON.parse(fr.result); } catch (e) { return toast('檔案讀不出來'); }
+      var d; try { d = JSON.parse(fr.result); } catch (e) { return toast('「' + f.name + '」不是專案檔（讀不出來）'); }
       confirmBox('要開啟「' + (d.name || f.name) + '」嗎？目前的畫板頁面會被取代（' + ((d.pages || []).length) + ' 頁）。', '開啟', function () { if (loadProject(d)) { closeModal(); toast('📂 已開啟專案'); } });
     };
     fr.readAsText(f);
-  };
+  }
 
   /* ---------- 加入 / QR / 開新教室 ---------- */
   function joinUrl() { var base = location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, ''); return base + 'play.html' + (WBNet.LOCAL ? '?local=1' : ''); }
