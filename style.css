@@ -626,3 +626,4 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .alert-box{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:98;display:flex;flex-direction:column;gap:8px;max-width:min(92vw,620px);width:max-content}
 .alert-card{display:flex;align-items:center;gap:10px;background:#fff7e6;border:2px solid #ff8a00;color:#3a2a00;border-radius:12px;padding:10px 14px;box-shadow:0 6px 22px #0003;font-weight:600}
 .alert-m{flex:1}
+.side-auto{font-size:12px;font-weight:600;color:#667;cursor:pointer;margin-right:8px;white-space:nowrap}
