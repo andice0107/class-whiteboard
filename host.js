@@ -1017,6 +1017,8 @@
       if (!$('task').hidden) { $('task').hidden = true; return; }
       if (!$('side').hidden) { $('side').hidden = true; V.refit(); return; }
       var acs = document.querySelectorAll('#alert-box .alert-card'); if (acs.length) { acs[acs.length - 1].remove(); return; }
+      if (pgPeek) { pgPeek = false; pgNoPeek = lastM.slice(); renderPages(); return; }
+      if (S.pagesOpen && S.mode !== 'show' && !ed) { S.pagesOpen = false; pgPeek = false; save(); renderPages(); setTimeout(V.refit, 50); return; }
     }
     var mkm = !ed && $('modal').hidden ? mkMatch(e) : null; if (mkm) { e.preventDefault(); gotoMode(mkm); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'a' || e.key === 'A') && !ed && S && S.mode !== 'show' && $('modal').hidden) {
@@ -1124,7 +1126,11 @@
 
   /* ---------- 頁面欄（可收合，每頁有 ⋯ 選單） ---------- */
   var thumbs = {}, pgPeek = false, pgT = null;
-  function pgPeekOn() { clearTimeout(pgT); if (S.pagesOpen || pgPeek) return; pgPeek = true; renderPages(); }
+  var pgNoPeek = null, lastM = [0, 0];
+  document.addEventListener('pointermove', function (e) { lastM = [e.clientX, e.clientY]; }, true);
+  function pgPeekOn() {
+    clearTimeout(pgT); if (S.pagesOpen || pgPeek) return;
+    if (pgNoPeek) { if (Math.hypot(lastM[0] - pgNoPeek[0], lastM[1] - pgNoPeek[1]) < 50) return; pgNoPeek = null; } pgPeek = true; renderPages(); }
   function pgPeekLeave() { clearTimeout(pgT); if (!pgPeek) return; pgT = setTimeout(function () { pgPeek = false; renderPages(); }, 3000); }
   function pgPeekWire() {
     ['pages', 'pages-open'].forEach(function (id) { var e = $(id); e.addEventListener('mouseenter', function () { if (CAN_HOVER) pgPeekOn(); }); e.addEventListener('mouseleave', function () { if (CAN_HOVER) pgPeekLeave(); }); });
@@ -2818,7 +2824,7 @@
     '<h4>🔔 通知記錄</h4><p>必跳通知（會記錄、橘點閃，並在畫面上方留一張橘框提示卡，按 ✕ 才消失）有：Google 要求重新連線（卡上有重新連線按鈕）、教室連線中斷／恢復、自動存失敗、全班投票完成、倒數計時到、學號被重複使用。還包括：教室連線中斷／恢復、這台電腦無法自動儲存、Google 雲端快到期、倒數計時和作業時間到、全班投票完成。橘色閃爍光點只在「系統」通知（雲端、連線問題）和「學生狀態」（離開畫布、回來、斷線、進入教室、學號被重複使用、換裝置）出現；一般的畫、移動、改物件只記在「課程」記錄，不閃。「💾 專案」→ 下方「通知記錄」，分「系統」（存專案、雲端、連線問題）和「課程」（課堂操作、物件新增修改刪除）兩類，從這次登入開始記，重新登入會重記。儲存專案這類通知只記錄不跳出；有新通知時「專案」旁會有橘色閃爍光點，打開查看後消失。</p>'+
     '<h4>☁️ 自動儲存</h4><p>專案存到「我的專案」之後，你每次修改，停手約 6 秒就會自動同步到雲端同一個專案，不用再按存。要另存新版本請按「另存成一份新的」。要保留舊版本，請先另存再修改。</p>'+
     '<h4>👥 學生與分組欄</h4><p>可以按 Esc 或右上 ✕ 收起；預設沒有操作 3 秒後也會自動收起（滑鼠在欄裡面、正在輸入、有勾選學生時不會收），不想要的話取消欄頭的「3 秒自動收起」。收起只是把欄位藏起來，分組、學生名單和勾選都不會變。</p>'+
-    '<h4>⎋ Esc 鍵</h4><p>全螢幕時（Chrome、Edge）Esc 會先留給畫板關視窗，要退出全螢幕請按右上「🗗 退出」或長按 Esc；Safari、Firefox 因為瀏覽器規定，按 Esc 會直接退出全螢幕，建議改按視窗上的「✕」。任何跳出來的視窗、選單、任務一覽、圖層面板，都可以按 Esc 關掉，一次關一層；最後才會關掉畫面上方的提示卡。</p>'+
+    '<h4>⎋ Esc 鍵</h4><p>最後面還會收起左邊（或右邊）的頁面欄：什麼視窗都沒開時按 Esc，頁面欄就收起來，要再打開就按邊上的「▶ 頁面」。全螢幕時（Chrome、Edge）Esc 會先留給畫板關視窗，要退出全螢幕請按右上「🗗 退出」或長按 Esc；Safari、Firefox 因為瀏覽器規定，按 Esc 會直接退出全螢幕，建議改按視窗上的「✕」。任何跳出來的視窗、選單、任務一覽、圖層面板，都可以按 Esc 關掉，一次關一層；最後才會關掉畫面上方的提示卡。</p>'+
     '<h4>⌨️ 模式快捷鍵</h4><p>預設：Windows 是 Ctrl＋Alt＋1／2／3，Mac 是 ⌃＋⌥＋1／2／3，分別切到上課／簡報／作業。可以在「模式」選單最下面的「設定模式快捷鍵」改組合鍵和按鍵，也可以關掉。</p>'+
     '<h4>👩‍🎓 讓學生拖動物件</h4><p>在物件（或圈選／群組）的右鍵選單按「學生可以拖動」：開了的物件，學生可以移動、縮放、旋轉，但不能改內容、不能刪除、不能解鎖。上課模式全班看同一個畫面，學生拖了全班都會看到；作業模式每組各自在自己的畫布上拖。想收回：再按一次就關；要一次全收，到工具欄「畫布物件」按「🛑 收回學生拖動權」，或按「全部鎖定」，學生馬上不能拖。簡報模式和作業模式按「鎖定這組操作」時學生也不能拖。</p>'+
     '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
