@@ -1414,41 +1414,65 @@
     save(); V.setViewport(null); renderMode(); refreshAll(); renderCtx(); renderPages(); renderTask();
     toast('✏️ 作業模式開始' + (mins ? '，' + mins + ' 分鐘後自動回到上課模式' : '（不限時）'));
   }
-  /* ---------- 模式快捷鍵（Windows／Mac 各有預設，可自己改） ---------- */
-  var MK_MODS = IS_MAC ? [['ctrl+alt', '⌃ Control ＋ ⌥ Option'], ['meta+alt', '⌘ Command ＋ ⌥ Option'], ['ctrl+shift', '⌃ Control ＋ ⇧ Shift'], ['meta+shift', '⌘ Command ＋ ⇧ Shift']]
-    : [['ctrl+alt', 'Ctrl ＋ Alt'], ['alt+shift', 'Alt ＋ Shift'], ['ctrl+shift', 'Ctrl ＋ Shift']];
-  var MK = { mods: 'ctrl+alt', keys: { present: '1', show: '2', work: '3' }, on: true };
-  try { var mk0 = JSON.parse(localStorage.getItem('wb-modekeys') || 'null'); if (mk0 && mk0.keys && MK_MODS.some(function (m) { return m[0] === mk0.mods; })) MK = mk0; } catch (e) {}
+  /* ---------- 模式快捷鍵（Windows／Mac 各有預設，直接按下想用的組合就能設定） ---------- */
+  var MK_DEF = function () { return { on: true, map: { present: { c: 'Digit1', a: 1 }, show: { c: 'Digit2', a: 1 }, work: { c: 'Digit3', a: 1 } } }; };
+  var MK = MK_DEF();
+  try {
+    var mk0 = JSON.parse(localStorage.getItem('wb-modekeys') || 'null');
+    if (mk0 && mk0.map) MK = mk0;
+    else if (mk0 && mk0.keys && mk0.mods) { /* 舊版（三個鍵）設定轉過來 */
+      var f = {}; mk0.mods.split('+').forEach(function (x) { f[x] = 1; });
+      MK = { on: mk0.on !== false, map: {} };
+      ['present', 'show', 'work'].forEach(function (m) { var k = mk0.keys[m] || ''; MK.map[m] = Object.assign({ c: /^\d$/.test(k) ? 'Digit' + k : 'Key' + k.toUpperCase() }, { c0: 1 }, f.ctrl ? { k: 1 } : {}, f.alt ? { a: 1 } : {}, f.shift ? { s: 1 } : {}, f.meta ? { m: 1 } : {}); });
+    }
+  } catch (e) {}
   function mkSave() { try { localStorage.setItem('wb-modekeys', JSON.stringify(MK)); } catch (e) {} }
-  function mkName(mod) { var n = { ctrl: IS_MAC ? '⌃' : 'Ctrl', alt: IS_MAC ? '⌥' : 'Alt', shift: IS_MAC ? '⇧' : 'Shift', meta: '⌘' }; return MK.mods.split('+').map(function (x) { return n[x]; }).join(IS_MAC ? '' : '+') + (IS_MAC ? '' : '+') + String(MK.keys[mod] || '').toUpperCase(); }
+  function mkCode(c) { return /^Digit(\d)$/.test(c) ? RegExp.$1 : /^Key([A-Z])$/.test(c) ? RegExp.$1 : /^Numpad(\d)$/.test(c) ? '小鍵盤' + RegExp.$1 : c; }
+  function mkLabel(d) {
+    if (!d) return '（未設定）';
+    var p = []; if (d.k) p.push(IS_MAC ? '⌃' : 'Ctrl'); if (d.a) p.push(IS_MAC ? '⌥' : 'Alt'); if (d.s) p.push(IS_MAC ? '⇧' : 'Shift'); if (d.m) p.push('⌘');
+    p.push(mkCode(d.c)); return p.join(IS_MAC ? '' : '＋');
+  }
+  function mkName(mod) { return mkLabel(MK.map[mod]); }
   function mkMatch(e) {
     if (!MK.on) return null;
-    var ms = MK.mods.split('+'); if (e.ctrlKey !== (ms.indexOf('ctrl') >= 0) || e.altKey !== (ms.indexOf('alt') >= 0) || e.shiftKey !== (ms.indexOf('shift') >= 0) || e.metaKey !== (ms.indexOf('meta') >= 0)) return null;
-    var c = /^Digit(\d)$/.test(e.code || '') ? RegExp.$1 : /^Key([A-Z])$/.test(e.code || '') ? RegExp.$1.toLowerCase() : null; if (!c) return null;
-    for (var m in MK.keys) if (MK.keys[m] === c) return m; return null;
+    for (var m in MK.map) { var d = MK.map[m]; if (d && e.code === d.c && !!d.k === e.ctrlKey && !!d.a === e.altKey && !!d.s === e.shiftKey && !!d.m === e.metaKey) return m; }
+    return null;
+  }
+  function mkWarn(d) {
+    if (!d.k && !d.a && !d.s && !d.m && !/^F\d+$/.test(d.c)) return '一定要搭配 Ctrl／Alt／Shift 之類的鍵，或使用 F1～F12';
+    if ((d.k || d.m) && !d.a && !d.s && /^(Digit[1-9]|Key[A-Z])$/.test(d.c)) return '⚠ 這個組合瀏覽器自己會用（切分頁、新增、關閉等），不一定搶得過，建議改用 Alt 或加上 Shift';
+    if (!d.k && !d.a && !d.m && d.s && /^Key[A-Z]$/.test(d.c)) return '⚠ 這樣會跟打大寫字母衝突';
+    return '';
   }
   function gotoMode(m) { if (!m || m === S.mode) return; closePop(); if (m === 'work') workBox(); else endWork(false, m); }
+  var mkRec = null;
+  document.addEventListener('keydown', function (e) {
+    if (!mkRec) return;
+    if (/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(e.code)) return; /* 只按修飾鍵，繼續等 */
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    var rec = mkRec; mkRec = null;
+    if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) return modeKeysBox();
+    var d = { c: e.code }; if (e.ctrlKey) d.k = 1; if (e.altKey) d.a = 1; if (e.shiftKey) d.s = 1; if (e.metaKey) d.m = 1;
+    var w = mkWarn(d); if (w && w.charAt(0) !== '⚠') { toast(w); return modeKeysBox(); }
+    for (var m in MK.map) if (m !== rec && MK.map[m] && JSON.stringify(MK.map[m]) === JSON.stringify(d)) { toast('這個組合已經給「' + ({ present: '上課', show: '簡報', work: '作業' })[m] + '」用了'); return modeKeysBox(); }
+    MK.map[rec] = d; mkSave(); mkNote = w; modeKeysBox();
+  }, true);
+  var mkNote = '';
   function modeKeysBox() {
+    mkRec = null;
     modal(function (box) {
       box.appendChild(el('h3', '', '⌨️ 模式快捷鍵（' + (IS_MAC ? 'Mac' : 'Windows') + '）'));
-      box.appendChild(el('p', 'hint', '在畫板上按「組合鍵＋數字或字母」就能切換模式。切到作業模式會跳出「開始作業」視窗。打字或開著視窗時不會觸發。'));
-      var on = btn('btn sm' + (MK.on ? ' primary' : ''), MK.on ? '快捷鍵：開' : '快捷鍵：關', function () { MK.on = !MK.on; mkSave(); modeKeysBox(); }); box.appendChild(on);
-      box.appendChild(el('div', 'pop-l', '組合鍵（選一個不會跟瀏覽器衝突的）'));
-      var r = el('div', 'pop-row');
-      MK_MODS.forEach(function (m) { r.appendChild(btn('btn sm' + (MK.mods === m[0] ? ' primary' : ''), m[1], function () { MK.mods = m[0]; mkSave(); modeKeysBox(); })); });
-      box.appendChild(r);
-      box.appendChild(el('div', 'pop-l', '各模式的按鍵（一個數字 0–9 或字母 A–Z，不能重複）'));
+      box.appendChild(el('p', 'hint', '按「設定」後，直接按下你想用的組合（兩個鍵就行，例如 ' + (IS_MAC ? '⌥1' : 'Alt＋1') + '，或單獨 F1～F12）。切到作業模式會跳出「開始作業」視窗。打字或開著視窗時不會觸發。'));
+      box.appendChild(btn('btn sm' + (MK.on ? ' primary' : ''), MK.on ? '快捷鍵：開' : '快捷鍵：關', function () { MK.on = !MK.on; mkSave(); modeKeysBox(); }));
       [['present', '🧑‍🏫 上課'], ['show', '📽️ 簡報'], ['work', '✏️ 作業']].forEach(function (z) {
-        var row = el('div', 'pop-row'); row.appendChild(el('span', '', z[1] + '　')); var i = el('input', 'num'); i.maxLength = 1; i.value = (MK.keys[z[0]] || '').toUpperCase(); i.style.width = '3em';
-        var st = el('span', 'hint', '　' + mkName(z[0]));
-        i.onchange = function () {
-          var v = i.value.trim().toLowerCase(); if (!/^[0-9a-z]$/.test(v)) { i.value = (MK.keys[z[0]] || '').toUpperCase(); return toast('只能填一個數字或字母'); }
-          for (var m in MK.keys) if (m !== z[0] && MK.keys[m] === v) { i.value = (MK.keys[z[0]] || '').toUpperCase(); return toast('這個按鍵已經給「' + ({ present: '上課', show: '簡報', work: '作業' })[m] + '」用了'); }
-          MK.keys[z[0]] = v; mkSave(); st.textContent = '　' + mkName(z[0]);
-        };
-        row.appendChild(i); row.appendChild(st); box.appendChild(row);
+        var row = el('div', 'pop-row'); row.appendChild(el('span', '', z[1] + '　'));
+        row.appendChild(el('b', 'mk-key', mkName(z[0])));
+        var b = btn('btn sm', '設定', function () { mkRec = z[0]; b.textContent = '請按下想用的組合…（Esc 取消）'; b.classList.add('primary'); });
+        row.appendChild(b); box.appendChild(row);
       });
-      box.appendChild(btn('btn sm', '還原預設', function () { MK = { mods: 'ctrl+alt', keys: { present: '1', show: '2', work: '3' }, on: true }; mkSave(); modeKeysBox(); }));
+      if (mkNote) { box.appendChild(el('p', 'warn-p', mkNote)); mkNote = ''; }
+      box.appendChild(btn('btn sm', '還原預設', function () { MK = MK_DEF(); mkSave(); modeKeysBox(); }));
       var rb = el('div', 'modal-btns'); rb.appendChild(btn('btn primary', '完成', closeModal)); box.appendChild(rb);
     });
   }
@@ -2825,7 +2849,7 @@
     '<h4>☁️ 自動儲存</h4><p>專案存到「我的專案」之後，你每次修改，停手約 6 秒就會自動同步到雲端同一個專案，不用再按存。要另存新版本請按「另存成一份新的」。要保留舊版本，請先另存再修改。</p>'+
     '<h4>👥 學生與分組欄</h4><p>可以按 Esc 或右上 ✕ 收起；預設沒有操作 3 秒後也會自動收起（滑鼠在欄裡面、正在輸入、有勾選學生時不會收），不想要的話取消欄頭的「3 秒自動收起」。收起只是把欄位藏起來，分組、學生名單和勾選都不會變。</p>'+
     '<h4>⎋ Esc 鍵</h4><p>最後面還會收起左邊（或右邊）的頁面欄：什麼視窗都沒開時按 Esc，頁面欄就收起來，要再打開就按邊上的「▶ 頁面」。全螢幕時（Chrome、Edge）Esc 會先留給畫板關視窗，要退出全螢幕請按右上「🗗 退出」或長按 Esc；Safari、Firefox 因為瀏覽器規定，按 Esc 會直接退出全螢幕，建議改按視窗上的「✕」。任何跳出來的視窗、選單、任務一覽、圖層面板，都可以按 Esc 關掉，一次關一層；最後才會關掉畫面上方的提示卡。</p>'+
-    '<h4>⌨️ 模式快捷鍵</h4><p>預設：Windows 是 Ctrl＋Alt＋1／2／3，Mac 是 ⌃＋⌥＋1／2／3，分別切到上課／簡報／作業。可以在「模式」選單最下面的「設定模式快捷鍵」改組合鍵和按鍵，也可以關掉。</p>'+
+    '<h4>⌨️ 模式快捷鍵</h4><p>預設：Windows 是 Alt＋1／2／3，Mac 是 ⌥＋1／2／3，分別切到上課／簡報／作業（兩個鍵）。可以在「模式」選單最下面的「設定模式快捷鍵」按「設定」後直接按下想用的組合（一到三個鍵都行，也可以單獨用 F1～F12），也可以關掉。</p>'+
     '<h4>👩‍🎓 讓學生拖動物件</h4><p>在物件（或圈選／群組）的右鍵選單按「學生可以拖動」：開了的物件，學生可以移動、縮放、旋轉，但不能改內容、不能刪除、不能解鎖。上課模式全班看同一個畫面，學生拖了全班都會看到；作業模式每組各自在自己的畫布上拖。想收回：再按一次就關；要一次全收，到工具欄「畫布物件」按「🛑 收回學生拖動權」，或按「全部鎖定」，學生馬上不能拖。簡報模式和作業模式按「鎖定這組操作」時學生也不能拖。</p>'+
     '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
     '<h4>🖼️ 編輯圖片</h4><p>在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
