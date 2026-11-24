@@ -302,9 +302,16 @@
       distribute(d.bid, { t: 'live', o: d.o }, sid);
       if (V.bid === d.bid) V.live(d.bid, d.o);
     } else if (d.t === 'needimg' && Array.isArray(d.ids)) {
-      d.ids.slice(0, 20).forEach(function (id) { if (WB.imgs[id]) net.send({ t: 'img', cid: st.cid, id: id, d: WB.imgs[id] }, sid); });
+      d.ids.slice(0, 20).forEach(function (id) {
+        if (!WB.imgs[id]) return;
+        /* 大圖正在分段傳送時，學生重複要圖就先不理，免得塞車（漏掉的段落學生會自己補要） */
+        var key = sid + '|' + id, tt = imgSentAt[key], need = 20000 + WB.imgs[id].length / 48000 * 40;
+        if (tt && Date.now() - tt < need) return; imgSentAt[key] = Date.now();
+        net.send({ t: 'img', cid: st.cid, id: id, d: WB.imgs[id] }, sid);
+      });
     } else if (d.t === 'sync') refresh(sid, true);
   }
+  var imgSentAt = {};
   setInterval(function () {
     var now = Date.now(), ch = false;
     for (var s in online) if (now - online[s] > 25000) { toast('📴 ' + stuLabel(s) + ' 斷線了（可能關掉頁面、沒網路或沒電）', false, true); delete online[s]; delete lastSent[s]; delete away[s]; ch = true; }
