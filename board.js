@@ -556,11 +556,12 @@ window.WB = (function () {
       e.preventDefault();
       if (h === 'menu') { if (opt.onContext) opt.onContext(o, e.clientX, e.clientY); return; }
       if (!h) select(o.id);
-      if (o.lk) return;
+      if (o.lk) { if (o.an && !h && !V.locked && (!opt.canEdit || opt.canEdit(o))) { var lp = pos(e); lkTap = { id: o.id, pid: e.pointerId, x: lp[0], y: lp[1] }; } return; }
       var p = pos(e), cx = o.x + o.w / 2, cy = o.y + o.h / 2, th = (o.r || 0) * Math.PI / 180;
       dragStart = { o: o, orig: o, h: h || 'move', p: p, cx: cx, cy: cy, th: th, moved: false, link: e.target.closest('a'), id: e.pointerId };
       try { stage.setPointerCapture(e.pointerId); } catch (x) {}
     }
+    var lkTap = null;
     function onMove(e) {
       if (gdrag && e.pointerId === gdrag.id) return groupMove(e);
       if (lassoPid != null && e.pointerId === lassoPid) { var lp = pos(e), ln = lasso.length; if (Math.abs(lasso[ln - 2] - lp[0]) + Math.abs(lasso[ln - 1] - lp[1]) >= 3) lasso.push(lp[0], lp[1]); dirty = true; return; }
@@ -608,6 +609,7 @@ window.WB = (function () {
     function onUp(e) {
       if (gdrag && e.pointerId === gdrag.id) return groupUp();
       if (lassoPid != null && e.pointerId === lassoPid) { lassoPid = null; var poly = lasso; lasso = null; dirty = true; var lb = lassoBase; lassoBase = null; if (poly && poly.length >= 6) { var got = lassoPick(poly); if (lb) got.forEach(function (id) { if (lb.indexOf(id) < 0) lb.push(id); }); V.setMulti(lb || got); } else if (lb) V.setMulti(lb); return; }
+      if (lkTap && e.pointerId === lkTap.pid) { var lt = lkTap, lq = pos(e); lkTap = null; var lo = find(lt.id); if (lo && lo.lk && lo.an && Math.hypot(lq[0] - lt.x, lq[1] - lt.y) < 8) gifToggle(lo); return; }
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
       if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); else if (o && o.an && D.h === 'move') gifToggle(o); return; }
