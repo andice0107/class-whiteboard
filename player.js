@@ -133,7 +133,7 @@
       me: me.sid,
       canErase: function (o) { return o.by !== 'T'; },
       canEdit: function (o) { return o && ((o.k === 'n' && o.by === me.sid && !!cur.note) || (o.mv && o.k !== 's' && o.k !== 'v' && !o.lk && !!cur.mv)); },
-      lockVideos: true,
+      lockVideos: true, gifLocal: true,
       onSelect: function () { renderTools(); },
       onOp: function (bid, op) { send({ t: 'op', bid: bid, op: op }); renderTools(); },
       onLive: function (bid, o) { send({ t: 'live', bid: bid, o: o }); },

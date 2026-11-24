@@ -321,7 +321,7 @@ window.WB = (function () {
         e.classList.toggle('mine', !!(opt.canEdit && opt.canEdit(o)));
         e.classList.toggle('lk', !!o.lk);
         e.classList.toggle('hd', !!o.hd && !!opt.showHidden); e.style.display = (o.hd && !opt.showHidden) ? 'none' : '';
-        if (o.k === 'i') { var im = e.firstChild, src = imgs[o.src] || ''; if (im.getAttribute('src') !== src) { if (src) im.src = src; else im.removeAttribute('src'); } e.classList.toggle('loading', !src);
+        if (o.k === 'i') { var im = e.firstChild, src = imgs[o.src] || ''; if (o.an) gifRender(e, o, im, src); else if (im.getAttribute('src') !== src) { if (src) im.src = src; else im.removeAttribute('src'); } e.classList.toggle('loading', !src);
           var cr = o.cr, st = im.style;
           if (cr && (cr[0] || cr[1] || cr[2] || cr[3])) { var fw = o.w / (1 - cr[0] - cr[2]), fh = o.h / (1 - cr[1] - cr[3]); st.position = 'absolute'; st.width = fw + 'px'; st.height = fh + 'px'; st.left = (-cr[0] * fw) + 'px'; st.top = (-cr[1] * fh) + 'px'; }
           else { st.position = ''; st.width = ''; st.height = ''; st.left = ''; st.top = ''; }
@@ -610,9 +610,15 @@ window.WB = (function () {
       if (lassoPid != null && e.pointerId === lassoPid) { lassoPid = null; var poly = lasso; lasso = null; dirty = true; var lb = lassoBase; lassoBase = null; if (poly && poly.length >= 6) { var got = lassoPick(poly); if (lb) got.forEach(function (id) { if (lb.indexOf(id) < 0) lb.push(id); }); V.setMulti(lb || got); } else if (lb) V.setMulti(lb); return; }
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
-      if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); return; }
+      if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); else if (o && o.an && D.h === 'move') gifToggle(o); return; }
       if (o) change(o, {}, true, D.orig);
     }
+    /* 學生：沒有拖拉權限時，點一下動圖在自己這邊播放／暫停 */
+    stage.addEventListener('click', function (e) {
+      if (!opt.gifLocal) return;
+      var p = pos(e), o = objAt(p[0], p[1], ['i']); if (!o || !o.an || (opt.canEdit && opt.canEdit(o))) return;
+      gifToggle(o);
+    });
     stage.addEventListener('pointerdown', onDown);
     stage.addEventListener('pointermove', onMove);
     stage.addEventListener('pointerup', onUp); stage.addEventListener('pointercancel', onUp);
@@ -645,6 +651,27 @@ window.WB = (function () {
         if (o.k === 's') { var inn = 0, tot = 0; for (var i = 0; i < o.p.length; i += 2) { tot++; if (inPoly(o.p[i], o.p[i + 1], poly)) inn++; } return tot && inn / tot >= 0.5; }
         return inPoly(o.x + o.w / 2, o.y + o.h / 2, poly);
       }).map(function (o) { return o.id; });
+    }
+    /* GIF 動圖：預設停在畫面上，點一下才播放，再點一下就暫停（停在當時那一格） */
+    function gifPlaying(e, o) { return e._lp != null ? e._lp : !!o.pl; }
+    function gifRender(e, o, im, src) {
+      if (e._opl !== !!o.pl) { e._opl = !!o.pl; e._lp = null; } /* 老師改了狀態：以老師為準 */
+      var want = gifPlaying(e, o);
+      if (e._gsrc !== src) {
+        e._gsrc = src; e._poster = null; e._want = null; im.removeAttribute('src');
+        if (src) { var t = new Image(); t.onload = function () { try { var cv = document.createElement('canvas'); cv.width = t.naturalWidth; cv.height = t.naturalHeight; cv.getContext('2d').drawImage(t, 0, 0); e._poster = cv.toDataURL('image/png'); } catch (x) {} if (e._gsrc === src && !e._want) { e._want = false; if (e._poster) im.src = e._poster; else im.src = src; } }; t.src = src; }
+      }
+      if (!src) { e.classList.toggle('loading', true); return; }
+      if (e._want == null) { if (want) { e._want = true; im.src = src; } } /* 還沒做好第一格封面時，先等 */
+      else if (want !== e._want) {
+        if (want) { e._want = true; im.removeAttribute('src'); im.src = src; }
+        else { try { var cv2 = document.createElement('canvas'); cv2.width = im.naturalWidth || 1; cv2.height = im.naturalHeight || 1; cv2.getContext('2d').drawImage(im, 0, 0); e._poster = cv2.toDataURL('image/png'); } catch (x) {} e._want = false; if (e._poster) im.src = e._poster; }
+      }
+      e.classList.toggle('gif-paused', !want); e.classList.add('gif');
+    }
+    function gifToggle(o) {
+      if (opt.gifLocal) { var e = els[o.id]; if (!e) return; e._lp = !gifPlaying(e, o); dirty = true; V.render && V.render(); }
+      else change(o, { pl: !o.pl }, true);
     }
     var taps = [];
     var lastDbl = 0, lastTap = null;
