@@ -721,7 +721,7 @@
         p.appendChild(el('div', 'pop-l', '顏色（筆劃、文字、圖形線條一起換）'));
         p.appendChild(swatches(PALETTE, null, function (c) { V.groupOp('color', c); renderTools(); }));
       }
-      mi('📄 複製一份', function () { closePop(); V.groupOp('dup'); renderTools(); });
+      mi('📄 原頁複製', function () { closePop(); V.groupOp('dup'); renderTools(); });
       mi('📋 拷貝（可以貼到別頁）', function () { closePop(); copyObjs(false); });
       if (!lk) mi('✂️ 剪下（可以貼到別頁）', function () { closePop(); copyObjs(true); });
       if (!lk) mi('🗑️ 全部刪除', function () { closePop(); V.groupOp('del'); renderTools(); }, 'danger');
@@ -799,8 +799,19 @@
 
   /* 物件右鍵選單 */
   var KIND = { i: '🖼️ 圖片', t: '🔤 文字框', g: '🔷 圖形', n: '📝 便利貼', v: '🎬 影片' };
+  /* 畫布空白處按右鍵：貼上 */
+  function blankMenu(x, y) {
+    closePop(); if (V.sel) V.select(null); if (V.multi) V.setMulti(null);
+    openPopAt(x, y, function (m) {
+      m.classList.add('menu');
+      var h = el('div', 'pop-h'); h.appendChild(el('span', '', '畫布')); m.appendChild(h);
+      if (objClip) m.appendChild(btn('mi', '📋 貼上物件（' + objClip.objs.length + ' 個，' + (objClip.cut ? '剛剪下的' : '剛拷貝的') + '）', function () { closePop(); pasteObjs(); }));
+      m.appendChild(btn('mi', '🖼 貼上剪貼簿裡的圖片或文字', function () { closePop(); pasteButton(); }));
+      if (!objClip) m.appendChild(el('div', 'pop-l', '想把物件搬到別頁：先選取物件按「剪下」或「拷貝」，再到那一頁的空白處按右鍵「貼上」。'));
+    });
+  }
   function objMenu(o, x, y) {
-    if (!o) { closePop(); return; }
+    if (!o) { blankMenu(x, y); return; }
     if (tool.mode !== 'select') setMode('select');
     if (V.sel !== o.id) V.select(o.id);
     o = V.find(o.id); if (!o) return;
@@ -918,7 +929,7 @@
       if (o.k === 'v') { var spb = btn('btn sm' + (o.sp ? ' primary' : ''), o.sp ? '👩‍🎓 學生可以自己點開播放：開' : '👩‍🎓 學生可以自己點開播放：關', function () { var nv = !o.sp; chg({ sp: nv }); propagateSp(o, nv); }); m.appendChild(spb); m.appendChild(el('div', 'pop-l', '關閉時學生只看到影片的封面圖、不能點；你按播放時學生那邊還是會跟著播放。指派作業前先設好；作業中要進共做畫面才能改學生那一份。')); }
       if (o.k !== 'v' && o.k !== 's') m.appendChild(btn('mi' + (o.mv ? ' on' : ''), o.mv ? '👩‍🎓 學生可以拖動這個物件：開（按一下關閉）' : '👩‍🎓 學生可以拖動這個物件：關（按一下開放）', function () { chg({ mv: o.mv ? false : true }); }));
       var rz = row();
-      rz.appendChild(btn('btn sm', '📄 複製', function () { var n = WB.clone(o); n.id = WB.uid(); n.x += 40; n.y += 40; delete n.lk; closePop(); V.addObj(n); renderTools(); }));
+      rz.appendChild(btn('btn sm', '📄 原頁複製', function () { var n = WB.clone(o); n.id = WB.uid(); n.x += 40; n.y += 40; delete n.lk; closePop(); V.addObj(n); renderTools(); }));
       rz.appendChild(btn('btn sm', '📋 拷貝', function () { closePop(); V.select(o.id); copyObjs(false); }));
       if (!o.lk) rz.appendChild(btn('btn sm', '✂️ 剪下', function () { closePop(); V.select(o.id); copyObjs(true); }));
       rz.appendChild(el('span', 'grow'));
