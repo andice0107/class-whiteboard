@@ -869,8 +869,9 @@
       if (o.k === 'i') {
         m.appendChild(el('div', 'pop-l', '圖片編輯'));
         var ie = row(), fl0 = o.fl || {}, hasCr = o.cr && (o.cr[0] || o.cr[1] || o.cr[2] || o.cr[3]);
-        ie.appendChild(btn('btn sm primary', '✂️ 裁切', function () { closePop(); cropModal(o); }));
-        ie.appendChild(btn('btn sm' + (fl0.g ? ' primary' : ''), '⚫ 黑白', function () { chg({ fl: Object.assign({}, fl0, { g: !fl0.g }) }); }));
+        if (o.an) m.appendChild(el('div', 'pop-l', '🎞️ 這是動圖：為了不弄壞動畫，不能裁切、調色、去背；可以移動、縮放、旋轉、透明度、圓角、框線。'));
+        else { ie.appendChild(btn('btn sm primary', '✂️ 裁切', function () { closePop(); cropModal(o); }));
+        ie.appendChild(btn('btn sm' + (fl0.g ? ' primary' : ''), '⚫ 黑白', function () { chg({ fl: Object.assign({}, fl0, { g: !fl0.g }) }); })); }
         var ib1 = row(), cb = fl0.b == null ? 100 : fl0.b, cc = fl0.c == null ? 100 : fl0.c;
         ib1.appendChild(el('span', '', '亮度 ' + cb + '%'));
         ib1.appendChild(btn('btn sm', '－', function () { chg({ fl: Object.assign({}, fl0, { b: Math.max(30, cb - 10) }) }); }));
@@ -892,7 +893,8 @@
         var ib5 = row(); ib5.appendChild(btn('btn sm' + (!o.bd ? ' primary' : ''), '無框', function () { chg({ bd: null }); }));
         ib5.appendChild(swatches(PALETTE.slice(0, 11), o.bd, function (c) { chg({ bd: c }); }, 'mini'));
         if (o.bd) { ib5.appendChild(btn('btn sm', '框－', function () { chg({ bw: Math.max(1, (o.bw || 4) - 2) }); })); ib5.appendChild(btn('btn sm', '框＋', function () { chg({ bw: Math.min(40, (o.bw || 4) + 2) }); })); }
-        m.appendChild(btn('mi', '🪄 去背（去掉背景色，例如白底）', function () { closePop(); bgModal(o); }));
+        if (o.an) { ib1.remove(); ib2.remove(); }
+        if (!o.an) m.appendChild(btn('mi', '🪄 去背（去掉背景色，例如白底）', function () { closePop(); bgModal(o); }));
         if (hasCr || o.fl || o.op != null || o.rd || o.bd || o.src0) m.appendChild(btn('mi', '↩️ 恢復原圖（取消裁切、色彩、框線、去背等所有調整）', function () { restoreImg(o); again(); }));
       }
       var ra = row(); ra.appendChild(el('span', 'pop-l', '旋轉'));
@@ -924,6 +926,7 @@
   function cropModal(o) {
     var src = WB.imgs[o.src]; if (!src) return toast('圖片還沒載入好，請稍等一下');
     modal(function (box) {
+      box.classList.add('crop-modal');
       box.appendChild(el('h3', '', '✂️ 裁切圖片'));
       box.appendChild(el('p', 'hint', '拖白框裡面可以移動，拖四個角的圓點調整大小。框外的部分會被裁掉（之後可以用「恢復原圖」找回來）。'));
       var wrap = el('div', 'crop-wrap'), im = new Image(); wrap.appendChild(im);
@@ -1081,6 +1084,7 @@
   }
   function addImageFile(file) {
     if (!file || !/^image\//.test(file.type)) return toast('這不是圖片檔');
+    if (file.type === 'image/gif') return addGifFile(file);
     var fr = new FileReader();
     fr.onload = function () {
       var im = new Image();
@@ -1100,6 +1104,33 @@
       im.src = fr.result;
     };
     fr.readAsDataURL(file);
+  }
+  /* GIF 動圖：不轉成 JPEG，原樣放進畫布（會一直循環播放） */
+  var GIF_MAX = 1536 * 1024;
+  function addGifFile(file) {
+    if (file.size > GIF_MAX) return toast('⚠ 這個 GIF 太大了（' + (file.size / 1048576).toFixed(1) + ' MB，上限 1.5 MB），同步給學生會很慢。請先壓縮，或改用影片');
+    var fr = new FileReader();
+    fr.onload = function () {
+      var im = new Image();
+      im.onload = function () {
+        var w = im.naturalWidth, h2 = im.naturalHeight, id = 'im' + WB.uid(); WB.setImg(id, fr.result); idbPut('i', id, fr.result);
+        var f = Math.min(1, (WB.W * 0.7) / w, (WB.H * 0.7) / h2), ww = Math.round(w * f), hh = Math.round(h2 * f), c = center(ww, hh);
+        toSelect();
+        V.addObj({ id: WB.uid(), k: 'i', by: 'T', x: c.x, y: c.y, w: ww, h: hh, r: 0, fx: false, src: id, an: 1 });
+        renderTools(); toast('🎞️ 已加入動圖，會一直循環播放');
+      };
+      im.onerror = function () { toast('這張 GIF 打不開'); };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+  /* 從網站直接把圖片拖到畫布：抓得到就放進來，被網站擋住就提示另存 */
+  function addImageUrl(url) {
+    if (!/^https?:\/\//.test(url)) return;
+    toast('正在抓圖片…');
+    fetch(url).then(function (r) { if (!r.ok) throw new Error('x'); return r.blob(); }).then(function (b) {
+      if (!/^image\//.test(b.type)) throw new Error('t'); addImageFile(new File([b], 'web', { type: b.type }));
+    }).catch(function () { toast('⚠ 這個網站不讓直接抓圖片。請在圖片上按右鍵「另存圖片」，再把檔案拖進來'); });
   }
   document.addEventListener('paste', function (e) {
     var a = document.activeElement; if (a && (a.isContentEditable || /INPUT|TEXTAREA/.test(a.tagName))) return;
@@ -1121,7 +1152,7 @@
   $('pdf-in').onchange = function () { importPages(this.files); this.value = ''; };
   $('file-in').onchange = function () { [].forEach.call(this.files, addImageFile); this.value = ''; };
   $('board-host').addEventListener('dragover', function (e) { e.preventDefault(); });
-  $('board-host').addEventListener('drop', function (e) { e.preventDefault(); [].forEach.call(e.dataTransfer.files || [], addImageFile); });
+  $('board-host').addEventListener('drop', function (e) { e.preventDefault(); var dfs = e.dataTransfer.files || []; if (!dfs.length) { var u = (e.dataTransfer.getData('text/uri-list') || '').split('\n')[0].trim(); if (!u) { var m = /<img[^>]+src=["']([^"']+)/i.exec(e.dataTransfer.getData('text/html') || ''); u = m ? m[1] : ''; } if (u) addImageUrl(u); return; } [].forEach.call(dfs, addImageFile); });
   WB.onImg(function () { S.pages.forEach(function (p) { boardChanged('P:' + p.id); }); for (var g in taskThumbs) boardChanged('G:' + g); });
 
   /* ---------- 頁面欄（可收合，每頁有 ⋯ 選單） ---------- */
@@ -2871,7 +2902,7 @@
     '<h4>⌨️ 模式快捷鍵</h4><p>預設：Windows 是 Alt＋1／2／3，Mac 是 ⌥＋1／2／3，分別切到上課／簡報／作業（兩個鍵）。可以在「模式」選單最下面的「設定模式快捷鍵」按「設定」後直接按下想用的組合（一到三個鍵都行，也可以單獨用 F1～F12），也可以關掉。</p>'+
     '<h4>👩‍🎓 讓學生拖動物件</h4><p>在物件（或圈選／群組）的右鍵選單按「學生可以拖動」：開了的物件，學生可以移動、縮放、旋轉，但不能改內容、不能刪除、不能解鎖。上課模式全班看同一個畫面，學生拖了全班都會看到；作業模式每組各自在自己的畫布上拖。想收回：再按一次就關；要一次全收，到工具欄「畫布物件」按「🛑 收回學生拖動權」，或按「全部鎖定」，學生馬上不能拖。簡報模式和作業模式按「鎖定這組操作」時學生也不能拖。</p>'+
     '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
-    '<h4>🖼️ 編輯圖片</h4><p>在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
+    '<h4>🖼️ 編輯圖片</h4><p>GIF 動圖會原樣放進畫布一直循環播放（上限 1.5 MB，學生那邊也會動；動圖不能裁切、調色、去背），也可以從網站直接把圖片拖到畫布，網站不讓抓時請先「另存圖片」。在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
   $('b-help').onclick = function () { helpModal('u'); };

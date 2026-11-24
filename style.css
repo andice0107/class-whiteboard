@@ -628,3 +628,8 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .alert-m{flex:1}
 .side-auto{font-size:12px;font-weight:600;color:#667;cursor:pointer;margin-right:8px;white-space:nowrap}
 .modal-box.drop-on{outline:4px dashed #2b6cff;outline-offset:-8px;background:#f2f6ff}
+.modal-box.crop-modal{max-width:980px;text-align:center}
+.modal-box.crop-modal .hint{text-align:left}
+.modal-box.crop-modal .modal-btns{justify-content:center}
+.modal-box.crop-modal .crop-wrap{margin:14px 14px 4px}
+.crop-wrap img{max-width:calc(min(100vw - 32px, 980px) - 96px);max-height:calc(100vh - 300px);max-height:calc(100dvh - 300px)}
