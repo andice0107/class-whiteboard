@@ -895,6 +895,7 @@
         if (o.bd) { ib5.appendChild(btn('btn sm', '框－', function () { chg({ bw: Math.max(1, (o.bw || 4) - 2) }); })); ib5.appendChild(btn('btn sm', '框＋', function () { chg({ bw: Math.min(40, (o.bw || 4) + 2) }); })); }
         if (o.an) { ib1.remove(); ib2.remove(); }
         if (!o.an) m.appendChild(btn('mi', '🪄 去背（去掉背景色，例如白底）', function () { closePop(); bgModal(o); }));
+        m.appendChild(btn('mi', '🗜 壓縮圖像（檔案變小，格式不變）', function () { closePop(); compressModal(o); }));
         if (hasCr || o.fl || o.op != null || o.rd || o.bd || o.src0) m.appendChild(btn('mi', '↩️ 恢復原圖（取消裁切、色彩、框線、去背等所有調整）', function () { restoreImg(o); again(); }));
       }
       var ra = row(); ra.appendChild(el('span', 'pop-l', '旋轉'));
@@ -1010,6 +1011,103 @@
       box.appendChild(rowb);
     });
   }
+  /* ---------- 壓縮圖像：原檔是什麼格式，壓完還是什麼格式（JPG→JPG、PNG→PNG、GIF→GIF） ---------- */
+  var gifencLib = null;
+  function loadGifenc() {
+    if (gifencLib) return Promise.resolve(gifencLib);
+    return fetch('vendor/gifenc/gifenc.js').then(function (r) { if (!r.ok) throw new Error('x'); return r.text(); }).then(function (t) {
+      var ex = {}; new Function('exports', 'module', t)(ex, { exports: ex }); gifencLib = ex; return ex;
+    });
+  }
+  function kb(n) { return n >= 1048576 ? (n / 1048576).toFixed(2) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  function dataBytes(d) { var i = d.indexOf(','); return Math.round((d.length - i - 1) * 3 / 4); }
+  function blobToDataUrl(b) { return new Promise(function (ok, bad) { var fr = new FileReader(); fr.onload = function () { ok(fr.result); }; fr.onerror = bad; fr.readAsDataURL(b); }); }
+  function compressGif(src, opt, token, isLive, onProg) {
+    if (typeof ImageDecoder === 'undefined') return Promise.reject(new Error('nodec'));
+    return Promise.all([loadGifenc(), fetch(src).then(function (r) { return r.arrayBuffer(); })]).then(function (rs) {
+      var lib = rs[0], dec = new ImageDecoder({ data: rs[1], type: 'image/gif' });
+      return dec.tracks.ready.then(function () {
+        var n = dec.tracks.selectedTrack.frameCount, enc = lib.GIFEncoder(), cv = document.createElement('canvas'), g = null, pend = 0, wrote = 0, W = 0, H = 0, i = 0;
+        function flush(data, delay) {
+          var pal = lib.quantize(data, opt.colors, { format: 'rgba4444', oneBitAlpha: true }), idx = lib.applyPalette(data, pal, 'rgba4444');
+          var ti = -1; for (var k = 0; k < pal.length; k++) if (pal[k].length > 3 && pal[k][3] === 0) { ti = k; break; }
+          enc.writeFrame(idx, W, H, { palette: pal, delay: Math.max(20, delay), repeat: 0, dispose: 2, transparent: ti >= 0, transparentIndex: ti >= 0 ? ti : 0 }); wrote++;
+        }
+        var held = null, heldDelay = 0;
+        function step() {
+          if (!isLive(token)) { dec.close(); return Promise.resolve(null); }
+          if (i >= n) {
+            if (held) flush(held, heldDelay); dec.close(); enc.finish();
+            return Promise.resolve(new Blob([enc.bytes()], { type: 'image/gif' }));
+          }
+          var idx0 = i++; onProg(idx0 + 1, n);
+          return dec.decode({ frameIndex: idx0 }).then(function (r) {
+            var im = r.image, dl = (im.duration || 100000) / 1000;
+            if (!g) { var sc = opt.scale / 100; W = Math.max(8, Math.round(im.displayWidth * sc)); H = Math.max(8, Math.round(im.displayHeight * sc)); cv.width = W; cv.height = H; g = cv.getContext('2d', { willReadFrequently: true }); }
+            var keep = idx0 % opt.skip === 0;
+            if (keep) { g.clearRect(0, 0, W, H); g.drawImage(im, 0, 0, W, H); var d = g.getImageData(0, 0, W, H).data; if (held) flush(held, heldDelay); held = new Uint8ClampedArray(d); heldDelay = dl; }
+            else heldDelay += dl;
+            im.close();
+            return new Promise(function (ok) { setTimeout(ok, 0); }).then(step);
+          });
+        }
+        return step();
+      });
+    });
+  }
+  function compressStill(src, mime, opt) {
+    return new Promise(function (ok, bad) {
+      var im = new Image(); im.onload = function () {
+        var sc = opt.scale / 100, w = Math.max(8, Math.round(im.naturalWidth * sc)), h = Math.max(8, Math.round(im.naturalHeight * sc)), cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        var g = cv.getContext('2d'); if (mime === 'image/jpeg') { g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); } g.drawImage(im, 0, 0, w, h);
+        cv.toBlob(function (b) { b ? blobToDataUrl(b).then(function (d) { ok({ blob: b, data: d }); }) : bad(new Error('blob')); }, mime, mime === 'image/jpeg' ? opt.q / 100 : undefined);
+      }; im.onerror = function () { bad(new Error('img')); }; im.src = src;
+    });
+  }
+  function compressModal(o) {
+    var src = WB.imgs[o.src]; if (!src) return toast('圖片還沒載入好，請稍等一下');
+    var mm = /^data:([^;,]+)/.exec(src), mime = mm ? mm[1].toLowerCase() : 'image/jpeg';
+    if (mime === 'image/jpg') mime = 'image/jpeg';
+    var isGif = mime === 'image/gif', isPng = mime === 'image/png', isJpg = mime === 'image/jpeg';
+    if (!isGif && !isPng && !isJpg) return toast('這種格式（' + mime + '）不能壓縮');
+    var fname = isGif ? 'GIF' : isPng ? 'PNG' : 'JPG', orig = dataBytes(src);
+    var opt = { scale: isGif ? 60 : 75, q: 70, colors: 128, skip: 1 }, token = 0, result = null, timer = null;
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🗜 壓縮圖像'));
+      box.appendChild(el('p', 'hint', '格式維持 ' + fname + '，不會變成別種格式。' + (isGif ? '動圖會保留動畫；顏色和格數減少會讓畫質下降。壓縮要一點時間，請稍等。' : isPng ? '縮小尺寸可減少檔案大小，畫質不會變差（無損）。' : '縮小尺寸、降低品質都可以讓檔案變小。') + '壓完可用「恢復原圖」還原。'));
+      var info = el('div', 'cmp-info', ''), prev = el('div', 'bg-prev'), pim = new Image(); pim.style.maxWidth = '100%'; pim.style.maxHeight = '40vh'; prev.appendChild(pim); pim.src = src;
+      box.appendChild(prev); box.appendChild(info);
+      function slider(label, key, min, max, step, fmt) {
+        var r = el('div', 'row'), s = el('input'), l = el('span', '', ''); s.type = 'range'; s.min = min; s.max = max; s.step = step; s.value = opt[key];
+        function sh() { l.textContent = fmt(+s.value); } sh(); s.oninput = function () { opt[key] = +s.value; sh(); sched(); };
+        r.appendChild(el('span', '', label + ' ')); r.appendChild(s); r.appendChild(l); box.appendChild(r);
+      }
+      slider('尺寸', 'scale', 10, 100, 5, function (v) { return v + '%'; });
+      if (isJpg) slider('品質', 'q', 20, 95, 5, function (v) { return v + '%'; });
+      if (isGif) { slider('顏色數', 'colors', 16, 256, 16, function (v) { return v + ' 色'; }); slider('跳格', 'skip', 1, 4, 1, function (v) { return v === 1 ? '保留全部格' : '每 ' + v + ' 格留 1 格'; }); }
+      var rowb = el('div', 'modal-btns'), ok = btn('btn primary', '✅ 套用壓縮', apply); ok.disabled = true;
+      rowb.appendChild(btn('btn', '取消', closeModal)); rowb.appendChild(ok); box.appendChild(rowb);
+      function live(t) { return t === token && !$('modal').hidden; }
+      function sched() { ok.disabled = true; result = null; token++; info.textContent = '原本 ' + kb(orig) + '　…調整中'; clearTimeout(timer); timer = setTimeout(run, 500); }
+      function run() {
+        var t = ++token; info.textContent = '原本 ' + kb(orig) + '　計算中…';
+        var p = isGif ? compressGif(src, opt, t, live, function (a, b) { if (live(t)) info.textContent = '原本 ' + kb(orig) + '　計算中… 第 ' + a + ' / ' + b + ' 格'; }).then(function (b) { return b && blobToDataUrl(b).then(function (d) { return { blob: b, data: d }; }); }) : compressStill(src, mime, opt);
+        p.then(function (r) {
+          if (!r || !live(t)) return; result = r; pim.src = r.data;
+          var nb = r.blob.size, pct = Math.round((1 - nb / orig) * 100);
+          info.textContent = '原本 ' + kb(orig) + ' → 壓縮後 ' + kb(nb) + (pct > 0 ? '（省 ' + pct + '%）' : '（沒有變小，請再調低尺寸或品質）'); ok.disabled = false;
+        }).catch(function (e) {
+          if (!live(t)) return;
+          info.textContent = e && e.message === 'nodec' ? '⚠ 這個瀏覽器不支援壓縮 GIF（需要電腦版 Chrome 或 Edge）' : '⚠ 壓縮失敗，請換一個設定再試';
+        });
+      }
+      function apply() {
+        if (!result) return; var d = result.data, nid = 'im' + WB.uid(); WB.setImg(nid, d); idbPut('i', nid, d); closeModal();
+        if (V.sel !== o.id) V.select(o.id); V.change({ src: nid, src0: o.src0 || o.src }); renderTools(); toast('🗜 已壓縮：' + kb(orig) + ' → ' + kb(result.blob.size));
+      }
+      run();
+    });
+  }
   document.addEventListener('keydown', function (e) {
     var ed = document.activeElement && (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
     /* Esc：一次關一層（先關跳出視窗，再關小選單，再關圖層面板，最後關提示卡） */
@@ -1106,9 +1204,9 @@
     fr.readAsDataURL(file);
   }
   /* GIF 動圖：不轉成 JPEG，原樣放進畫布（會一直循環播放） */
-  var GIF_MAX = 1536 * 1024;
+  var GIF_WARN = 1536 * 1024, GIF_MAX = 20 * 1048576;
   function addGifFile(file) {
-    if (file.size > GIF_MAX) return toast('⚠ 這個 GIF 太大了（' + (file.size / 1048576).toFixed(1) + ' MB，上限 1.5 MB），同步給學生會很慢。請先壓縮，或改用影片');
+    if (file.size > GIF_MAX) return toast('⚠ 這個 GIF 太大了（' + (file.size / 1048576).toFixed(1) + ' MB，超過上限 20 MB），請先壓縮或改用影片');
     var fr = new FileReader();
     fr.onload = function () {
       var im = new Image();
@@ -1117,7 +1215,7 @@
         var f = Math.min(1, (WB.W * 0.7) / w, (WB.H * 0.7) / h2), ww = Math.round(w * f), hh = Math.round(h2 * f), c = center(ww, hh);
         toSelect();
         V.addObj({ id: WB.uid(), k: 'i', by: 'T', x: c.x, y: c.y, w: ww, h: hh, r: 0, fx: false, src: id, an: 1 });
-        renderTools(); toast('🎞️ 已加入動圖，會一直循環播放');
+        renderTools(); toast(file.size > GIF_WARN ? '🎞️ 已加入動圖（' + (file.size / 1048576).toFixed(1) + ' MB，同步給學生會比較慢，建議到「圖片編輯」按「🗜 壓縮圖像」）' : '🎞️ 已加入動圖，會一直循環播放');
       };
       im.onerror = function () { toast('這張 GIF 打不開'); };
       im.src = fr.result;
@@ -2902,7 +3000,7 @@
     '<h4>⌨️ 模式快捷鍵</h4><p>預設：Windows 是 Alt＋1／2／3，Mac 是 ⌥＋1／2／3，分別切到上課／簡報／作業（兩個鍵）。可以在「模式」選單最下面的「設定模式快捷鍵」按「設定」後直接按下想用的組合（一到三個鍵都行，也可以單獨用 F1～F12），也可以關掉。</p>'+
     '<h4>👩‍🎓 讓學生拖動物件</h4><p>在物件（或圈選／群組）的右鍵選單按「學生可以拖動」：開了的物件，學生可以移動、縮放、旋轉，但不能改內容、不能刪除、不能解鎖。上課模式全班看同一個畫面，學生拖了全班都會看到；作業模式每組各自在自己的畫布上拖。想收回：再按一次就關；要一次全收，到工具欄「畫布物件」按「🛑 收回學生拖動權」，或按「全部鎖定」，學生馬上不能拖。簡報模式和作業模式按「鎖定這組操作」時學生也不能拖。</p>'+
     '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
-    '<h4>🖼️ 編輯圖片</h4><p>GIF 動圖放進畫布時先停住（左上角有 ▶），在「選取」狀態下點一下就開始一直循環播放，再點一下就暫停在當時那一格（再點會從頭播）；你按了，全班看到的一起動。學生自己點動圖，只會影響他自己的畫面。上限 1.5 MB；動圖不能裁切、調色、去背，也可以從網站直接把圖片拖到畫布，網站不讓抓時請先「另存圖片」。在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
+    '<h4>🖼️ 編輯圖片</h4><p>GIF 動圖放進畫布時先停住（左上角有 ▶），在「選取」狀態下點一下就開始一直循環播放，再點一下就暫停在當時那一格（再點會從頭播）；你按了，全班看到的一起動。學生自己點動圖，只會影響他自己的畫面。超過 1.5 MB 會提醒同步較慢（上限 20 MB），可用「🗜 壓縮圖像」變小；動圖不能裁切、調色、去背，也可以從網站直接把圖片拖到畫布，網站不讓抓時請先「另存圖片」。在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），<b>🗜 壓縮圖像</b>（JPG 壓完還是 JPG、PNG 還是 PNG、GIF 還是 GIF，可調尺寸／品質／顏色數／跳格，GIF 壓縮需電腦版 Chrome 或 Edge），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
   $('b-help').onclick = function () { helpModal('u'); };
