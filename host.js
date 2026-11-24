@@ -901,6 +901,7 @@
         ib5.appendChild(swatches(PALETTE.slice(0, 11), o.bd, function (c) { chg({ bd: c }); }, 'mini'));
         if (o.bd) { ib5.appendChild(btn('btn sm', '框－', function () { chg({ bw: Math.max(1, (o.bw || 4) - 2) }); })); ib5.appendChild(btn('btn sm', '框＋', function () { chg({ bw: Math.min(40, (o.bw || 4) + 2) }); })); }
         if (o.an) { ib1.remove(); ib2.remove(); }
+        if (o.an) { m.appendChild(btn('btn sm' + (o.sp ? ' primary' : ''), o.sp ? '👩‍🎓 學生可以自己點播放／暫停：開' : '👩‍🎓 學生可以自己點播放／暫停：關', function () { var nv = !o.sp; chg({ sp: nv }); propagateSp(o, nv); })); m.appendChild(el('div', 'pop-l', '關閉時學生只能看你播放或暫停的畫面；開啟後學生可以點動圖，只影響他自己的畫面。指派作業前先設好；作業中要進共做畫面才能改學生那一份。')); }
         if (!o.an) m.appendChild(btn('mi', '🪄 去背（去掉背景色，例如白底）', function () { closePop(); bgModal(o); }));
         m.appendChild(btn('mi', '🗜 壓縮圖像（檔案變小，格式不變）', function () { closePop(); compressModal(o); }));
         if (hasCr || o.fl || o.op != null || o.rd || o.bd || o.src0) m.appendChild(btn('mi', '↩️ 恢復原圖（取消裁切、色彩、框線、去背等所有調整）', function () { restoreImg(o); again(); }));
@@ -1659,7 +1660,7 @@
     if (!pid) Object.keys(S.groups).forEach(function (gid) { var b = S.groups[gid].boards; Object.keys(b).forEach(function (k) { if (b[k].some(function (x) { return x.id === o.id; })) pid = k; }); });
     if (!pid) return;
     var touched = {};
-    function same(x) { return x.k === 'v' && x.id !== o.id && ((o.vk && x.vk === o.vk) || (x.yt && x.yt === o.yt)); }
+    function same(x) { return x.id !== o.id && (o.k === 'v' ? x.k === 'v' && ((o.vk && x.vk === o.vk) || (x.yt && x.yt === o.yt)) : x.k === 'i' && x.an && ((o.vk && x.vk === o.vk) || (x.src && x.src === o.src))); }
     function apply(arr) { var ch = false; (arr || []).forEach(function (x) { if (same(x) && !!x.sp !== val) { if (val) x.sp = true; else delete x.sp; ch = true; } }); return ch; }
     var pg = page(pid); if (pg && apply(pg.objs)) boardChanged('P:' + pid);
     Object.keys(S.groups).forEach(function (gid) { var g = S.groups[gid]; if (g.boards[pid] && apply(g.boards[pid])) { touched[gid] = 1; boardChanged('G:' + gid); } });
@@ -1668,7 +1669,7 @@
   }
   function assign(gid, pid, quiet) {
     var g = S.groups[gid], p = page(pid); if (!g || !p) return;
-    p.objs.forEach(function (o) { if (o.k === 'v' && !o.vk) o.vk = o.id; });
+    p.objs.forEach(function (o) { if ((o.k === 'v' || o.an) && !o.vk) o.vk = o.id; });
     if (!g.boards[pid]) g.boards[pid] = WB.clone(p.objs).map(function (o) { o.by = 'T'; o.id = WB.uid(); return o; });
     g.cur = pid;
     if (!quiet) { save(); members(gid).forEach(function (s) { refresh(s); }); boardChanged('G:' + gid); }
@@ -3007,7 +3008,7 @@
     '<h4>⌨️ 模式快捷鍵</h4><p>預設：Windows 是 Alt＋1／2／3，Mac 是 ⌥＋1／2／3，分別切到上課／簡報／作業（兩個鍵）。可以在「模式」選單最下面的「設定模式快捷鍵」按「設定」後直接按下想用的組合（一到三個鍵都行，也可以單獨用 F1～F12），也可以關掉。</p>'+
     '<h4>👩‍🎓 讓學生拖動物件</h4><p>在物件（或圈選／群組）的右鍵選單按「學生可以拖動」：開了的物件，學生可以移動、縮放、旋轉，但不能改內容、不能刪除、不能解鎖。上課模式全班看同一個畫面，學生拖了全班都會看到；作業模式每組各自在自己的畫布上拖。想收回：再按一次就關；要一次全收，到工具欄「畫布物件」按「🛑 收回學生拖動權」，或按「全部鎖定」，學生馬上不能拖。簡報模式和作業模式按「鎖定這組操作」時學生也不能拖。</p>'+
     '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
-    '<h4>🖼️ 編輯圖片</h4><p>GIF 動圖放進畫布時先停住（左上角有 ▶），在「選取」狀態下點一下就開始一直循環播放，再點一下就暫停在當時那一格（再點會從頭播）；你按了，全班看到的一起動。學生自己點動圖，只會影響他自己的畫面。超過 1.5 MB 會提醒同步較慢（上限 20 MB），可用「🗜 壓縮圖像」變小；動圖不能裁切、調色、去背，也可以從網站直接把圖片拖到畫布，網站不讓抓時請先「另存圖片」。在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），<b>🗜 壓縮圖像</b>（JPG 壓完還是 JPG、PNG 還是 PNG、GIF 還是 GIF，可調尺寸／品質／顏色數／跳格，GIF 壓縮需電腦版 Chrome 或 Edge），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
+    '<h4>🖼️ 編輯圖片</h4><p>GIF 動圖放進畫布時先停住（左上角有 ▶），在「選取」狀態下點一下就開始一直循環播放（圖片選單可開關「學生可以自己點播放／暫停」，預設關），再點一下就暫停在當時那一格（再點會從頭播）；你按了，全班看到的一起動。學生開放後自己點動圖，只會影響他自己的畫面。超過 1.5 MB 會提醒同步較慢（上限 20 MB），可用「🗜 壓縮圖像」變小；動圖不能裁切、調色、去背，也可以從網站直接把圖片拖到畫布，網站不讓抓時請先「另存圖片」。在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），<b>🗜 壓縮圖像</b>（JPG 壓完還是 JPG、PNG 還是 PNG、GIF 還是 GIF，可調尺寸／品質／顏色數／跳格，GIF 壓縮需電腦版 Chrome 或 Edge），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
     '<h4>🗂 圖層</h4><p>物件重疊時，在物件上按右鍵可以「置頂、上移、下移、置底」；按「選取」兩下打開選單，點「開啟圖層面板」，會列出這一頁所有物件由上到下的順序，每一列也能調整。筆跡永遠在物件的上面，影片永遠在最上層。</p><h4>🎨 顯示設定</h4><p>在這個視窗上方的「🎨 顯示設定」：字體可以調成標準／大／特大（工具欄文字、選單、說明視窗），也可以切換深色模式（只有老師的介面變暗，畫布維持白色），還能用 ▲▼ 調整工具欄按鈕的上下順序（登入 Google 後，順序會跟著帳號走）。這些只影響這台電腦，學生不受影響。工具欄放不下時，用滑鼠滾輪或手指上下滑就能找到下面的按鈕。</p><h4>💾 存檔與換電腦（上方「💾 專案」）</h4><ul><li><b>我的專案</b>：用 Google 帳號登入後存起來，在任何電腦登入都看得到、可再開啟。</li><li><b>📁 專案檔</b>：存成檔案（.wbproj.json）放在這台電腦，需要時再「開啟專案檔」。</li><li><b>🔑 用金鑰分享</b>：存到雲端得到一串金鑰，輸入金鑰就能在別台電腦或給同事開啟。</li><li>專案內容包含所有頁面、圖片、文字、圖形、便利貼、影片，<b>不含</b>學生名單和學生作答。</li></ul>' +
     '<h4>🤖 想請 AI 幫你做課程內容？</h4><p>切換到上面的「給AI的說明」分頁，複製提示詞貼給任何 AI，它就能幫你產出可以直接打開的專案檔。</p>';
   $('b-help').onclick = function () { helpModal('u'); };

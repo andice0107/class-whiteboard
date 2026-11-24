@@ -556,7 +556,7 @@ window.WB = (function () {
       e.preventDefault();
       if (h === 'menu') { if (opt.onContext) opt.onContext(o, e.clientX, e.clientY); return; }
       if (!h) select(o.id);
-      if (o.lk) { if (o.an && !h && !V.locked && (!opt.canEdit || opt.canEdit(o))) { var lp = pos(e); lkTap = { id: o.id, pid: e.pointerId, x: lp[0], y: lp[1] }; } return; }
+      if (o.lk) { if (o.an && !h && e.button === 0 && !V.locked && (!opt.canEdit || opt.canEdit(o))) { var lp = pos(e); lkTap = { id: o.id, pid: e.pointerId, x: lp[0], y: lp[1] }; } return; }
       var p = pos(e), cx = o.x + o.w / 2, cy = o.y + o.h / 2, th = (o.r || 0) * Math.PI / 180;
       dragStart = { o: o, orig: o, h: h || 'move', p: p, cx: cx, cy: cy, th: th, moved: false, link: e.target.closest('a'), id: e.pointerId };
       try { stage.setPointerCapture(e.pointerId); } catch (x) {}
@@ -612,13 +612,13 @@ window.WB = (function () {
       if (lkTap && e.pointerId === lkTap.pid) { var lt = lkTap, lq = pos(e); lkTap = null; var lo = find(lt.id); if (lo && lo.lk && lo.an && Math.hypot(lq[0] - lt.x, lq[1] - lt.y) < 8) gifToggle(lo); return; }
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
-      if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); else if (o && o.an && D.h === 'move') gifToggle(o); return; }
+      if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); else if (o && o.an && D.h === 'move' && e.button === 0) gifToggle(o); return; }
       if (o) change(o, {}, true, D.orig);
     }
     /* 學生：沒有拖拉權限時，點一下動圖在自己這邊播放／暫停 */
     stage.addEventListener('click', function (e) {
       if (!opt.gifLocal) return;
-      var p = pos(e), o = objAt(p[0], p[1], ['i']); if (!o || !o.an || (opt.canEdit && opt.canEdit(o))) return;
+      var p = pos(e), o = objAt(p[0], p[1], ['i']); if (!o || !o.an || !o.sp || (opt.canEdit && opt.canEdit(o))) return;
       gifToggle(o);
     });
     stage.addEventListener('pointerdown', onDown);
@@ -657,6 +657,7 @@ window.WB = (function () {
     /* GIF 動圖：預設停在畫面上，點一下才播放，再點一下就暫停（停在當時那一格） */
     function gifPlaying(e, o) { return e._lp != null ? e._lp : !!o.pl; }
     function gifRender(e, o, im, src) {
+      if (e._osp !== !!o.sp) { e._osp = !!o.sp; if (!o.sp) e._lp = null; }
       if (e._opl !== !!o.pl) { e._opl = !!o.pl; e._lp = null; } /* 老師改了狀態：以老師為準 */
       var want = gifPlaying(e, o);
       if (e._gsrc !== src) {
