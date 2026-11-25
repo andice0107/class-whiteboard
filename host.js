@@ -465,7 +465,7 @@
       if (!V.objs.length) return toast('這一頁已經是空白的');
       confirmBox('要把這一頁全部清空嗎？（筆劃、圖片、文字、圖形、便利貼、影片都會清掉；按「上一步」可以復原）', '全部清除', function () { V.clearAll(); renderTools(); });
     }));
-    orderTools();
+    orderTools(); zoomHud();
   }
   /* 工具欄順序：預設照下面的排，可以在「🎨 顯示設定」調整；登入 Google 後跟著帳號走 */
   var TB_DEF = [['pen', '✏️ 筆'], ['colors', '🎨 黑紅藍三色'], ['erase', '🧽 橡皮擦（含清除筆劃）'], ['select', '選取（移動／圈選）'], ['shape', '🔷 圖形'], ['insert', '➕ 插入'], ['lock', '🗂️ 畫布物件（全部鎖定、圖層）'], ['zoom', '🔍 放大鏡'], ['class', '🎲 課堂'], ['action', '🎬 動作（上一步／下一步）'], ['clearall', '🗑️ 全清除']];
@@ -480,7 +480,7 @@
     var t = $('toolbar'), byK = {};
     Array.prototype.slice.call(t.children).forEach(function (c) { if (c.dataset.tk) byK[c.dataset.tk] = c; });
     tbOrder().forEach(function (k) { if (byK[k]) t.appendChild(byK[k]); });
-    [['pen', penPanel], ['erase', eraserPanel], ['lock', objectsPanel], ['shape', shapePanel], ['insert', insertPanel], ['class', classPanel], ['action', actionPanel]].forEach(function (z) {
+    [['pen', penPanel], ['zoom', zoomPanel], ['erase', eraserPanel], ['lock', objectsPanel], ['shape', shapePanel], ['insert', insertPanel], ['class', classPanel], ['action', actionPanel]].forEach(function (z) {
       var b = byK[z[0]]; if (!b) return; var ho = hoverOpen(z[0], z[1]); b.onmouseenter = function (e) { if (CAN_HOVER) ho(e); }; b.onmouseleave = function (e) { if (CAN_HOVER) hovLeave(e); };
     });
   }
@@ -534,6 +534,18 @@
     });
   }
   function allLocked() { return !!S.lock || (V.objs.length > 0 && V.objs.every(function (o) { return o.lk; })); }
+  /* 放大鏡：畫布右上角顯示目前倍率，並有一鍵恢復 100% */
+  function zoomHud() {
+    var host = $('board-host'), h = $('zoom-hud'), on = tool.mode === 'zoom' && tv.kind === 'page';
+    if (!h) {
+      h = el('div', 'zoom-hud'); h.id = 'zoom-hud';
+      h.appendChild(el('span', 'zh-v', '')); h.appendChild(btn('btn sm', '恢復 100%', function () { V.setViewport(null); S.zoom = null; save(); refreshAll(); renderCtx(); zoomHud(); }));
+      host.appendChild(h);
+    }
+    h.hidden = !on; if (!on) return;
+    var pc = Math.round((V.vp && V.vp.z || 1) * 100); h.firstChild.textContent = '🔍 目前放大 ' + pc + '%'; h.lastChild.disabled = pc <= 100;
+  }
+  setInterval(function () { try { zoomHud(); } catch (e) {} }, 250);
   function lockBadge() {
     var host = $('board-host'), b = $('lock-badge');
     if (!b) { b = el('div', 'lock-badge'); b.id = 'lock-badge'; b.textContent = '🔒 物件已全部鎖定，無法操作'; host.appendChild(b); }
