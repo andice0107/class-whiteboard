@@ -40,9 +40,19 @@ window.WB = (function () {
   }
   /* 逐行對齊：o.als 是每一段（以換行分開）的對齊，'l' 靠左、'c' 置中、'r' 靠右、'' 跟著整個框 */
   var ALM = { l: 'left', c: 'center', r: 'right' };
+  function okColor(c) { return /^#[0-9a-f]{6}$/i.test(c || '') ? c : ''; }
+  function runHtml(r) {
+    var h = linkify(r.t), st = [];
+    if (r.b) st.push('font-weight:700'); if (r.i) st.push('font-style:italic'); if (r.u) st.push('text-decoration:underline'); if (okColor(r.c)) st.push('color:' + r.c);
+    return st.length ? '<span style="' + st.join(';') + '">' + h + '</span>' : h;
+  }
   function lineHtml(o) {
     var ps = String(o.txt || '').split('\n');
-    return '<div class="lns">' + ps.map(function (p, i) { var a = o.als && o.als[i]; return '<div class="ln"' + (a && ALM[a] ? ' data-al="' + a + '" style="text-align:' + ALM[a] + '"' : '') + '>' + (linkify(p) || '<br>') + '</div>'; }).join('') + '</div>';
+    return '<div class="lns">' + ps.map(function (p, i) {
+      var a = o.als && o.als[i], runs = o.rt && Array.isArray(o.rt[i]) ? o.rt[i] : null;
+      var inner = runs && runs.length ? runs.map(function (r) { return runHtml({ t: String(r.t == null ? '' : r.t), b: r.b, i: r.i, u: r.u, c: r.c }); }).join('') : linkify(p);
+      return '<div class="ln"' + (a && ALM[a] ? ' data-al="' + a + '" style="text-align:' + ALM[a] + '"' : '') + '>' + (inner || '<br>') + '</div>';
+    }).join('') + '</div>';
   }
   function lineAl(o, i, def) { var a = o.als && o.als[i]; return a && ALM[a] ? ALM[a] : def; }
   /* 幾何圖形：在 0..w,0..h 的框內產生點 */
@@ -346,7 +356,7 @@ window.WB = (function () {
           if (o.k === 'n') { e.style.background = o.c || '#fff3a6'; t.style.color = '#333'; } else t.style.color = o.c || '#111';
           t.classList.toggle('vert', !!o.v);
           var al = o.al || (o.k === 'g' ? 'center' : 'left'); t.style.textAlign = al; if (o.k === 'g') t.style.justifyContent = al === 'left' ? 'flex-start' : al === 'right' ? 'flex-end' : 'center';
-          if (editing !== o.id) { var h = (o.als && !o.v && o.txt ? lineHtml(o) : linkify(o.txt)) || (o.k === 'g' ? '' : '<span class="ph">' + (o.k === 'n' ? '（點兩下寫字）' : '（點兩下輸入文字）') + '</span>'); if (t._h !== h) { t.innerHTML = h; t._h = h; } }
+          if (editing !== o.id) { var h = ((o.als || o.rt) && !o.v && o.txt ? lineHtml(o) : linkify(o.txt)) || (o.k === 'g' ? '' : '<span class="ph">' + (o.k === 'n' ? '（點兩下寫字）' : '（點兩下輸入文字）') + '</span>'); if (t._h !== h) { t.innerHTML = h; t._h = h; } }
         }
         var L = o.k === 'v' ? vlayer : layer, pv = o.k === 'v' ? prevV : prevL, want = pv ? pv.nextSibling : L.firstChild;
         if (want !== e) L.insertBefore(e, want); /* 只有順序不對才移動，避免打字時失去焦點 */
@@ -376,7 +386,7 @@ window.WB = (function () {
       var key = o.id + (o.lk ? 'L' : '') + (opt.onContext ? 'M' : '');
       if (sel._id !== key) {
         sel.innerHTML = o.lk ? '<div class="box lk"><i class="lkb" data-h="menu">🔒</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>'
-          : '<div class="box"><i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i><i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i>' + (o.shape === 'numline' ? '<i class="h nl" data-h="nl" title="往左右拉：增加或減少左邊的數字"></i><i class="h nr" data-h="nr" title="往左右拉：增加或減少右邊的數字"></i>' : '') + '<i class="rot" data-h="rot">⟳</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>';
+          : '<div class="box"><i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i><i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i>' + (o.k === 't' ? '<i class="h eg-n" data-h="n"></i><i class="h eg-s" data-h="s"></i><i class="h eg-e" data-h="e"></i><i class="h eg-w" data-h="w"></i>' : '') + (o.shape === 'numline' ? '<i class="h nl" data-h="nl" title="往左右拉：增加或減少左邊的數字"></i><i class="h nr" data-h="nr" title="往左右拉：增加或減少右邊的數字"></i>' : '') + '<i class="rot" data-h="rot">⟳</i>' + (opt.onContext ? '<i class="mnu" data-h="menu">⋯</i>' : '') + '<span class="szl"></span></div>';
         sel._id = key;
       }
       var b = sel.firstChild;
@@ -595,18 +605,27 @@ window.WB = (function () {
         var ncx2 = D.cx + off * Math.cos(D.th), ncy2 = D.cy + off * Math.sin(D.th);
         patch = { x: Math.round(ncx2 - nw2 / 2), y: Math.round(ncy2 - O.h / 2), w: nw2 };
         if (D.h === 'nr') patch.nmax = nm0 + nn * st0; else patch.nmin = nx0 - nn * st0;
+      } else if (D.orig.k === 't' && /^[nsew]$/.test(D.h)) {
+        /* 文字框的邊中間控制點：只改框的大小，字不動 */
+        var ddx2 = p[0] - D.cx, ddy2 = p[1] - D.cy, cc = Math.cos(-D.th), ss = Math.sin(-D.th), lx3 = ddx2 * cc - ddy2 * ss, ly3 = ddx2 * ss + ddy2 * cc;
+        var ew = D.h === 'e' || D.h === 'w', sgn = (D.h === 'e' || D.h === 's') ? 1 : -1, nW = D.orig.w, nH = D.orig.h, mx3 = 0, my3 = 0;
+        if (ew) { var o3 = -sgn * D.orig.w / 2; nW = Math.max(30, sgn * (lx3 - o3)); mx3 = o3 + sgn * nW / 2; }
+        else { var o4 = -sgn * D.orig.h / 2; nH = Math.max(30, sgn * (ly3 - o4)); my3 = o4 + sgn * nH / 2; }
+        var ncx3 = D.cx + mx3 * Math.cos(D.th) - my3 * Math.sin(D.th), ncy3 = D.cy + mx3 * Math.sin(D.th) + my3 * Math.cos(D.th);
+        patch = { x: Math.round(ncx3 - nW / 2), y: Math.round(ncy3 - nH / 2), w: Math.round(nW), h: Math.round(nH) };
       } else {
         var sx = D.h.indexOf('e') >= 0 ? 1 : -1, sy = D.h.indexOf('s') >= 0 ? 1 : -1;
         var dx = p[0] - D.cx, dy = p[1] - D.cy, c = Math.cos(-D.th), s2 = Math.sin(-D.th);
         var lx = dx * c - dy * s2, ly = dx * s2 + dy * c;
         var ox = -sx * D.orig.w / 2, oy = -sy * D.orig.h / 2;
         var mn = D.orig.k === 'g' ? 2 : 30, w = Math.max(mn, sx * (lx - ox)), hh = Math.max(mn, sy * (ly - oy));
-        if (D.orig.k === 'i' || D.orig.ar || (D.orig.k === 'g' && (D.orig.shape === 'square' || D.orig.shape === 'circle'))) { var k = Math.max(w / D.orig.w, hh / D.orig.h); w = D.orig.w * k; hh = D.orig.h * k; }
+        if (D.orig.k === 'i' || D.orig.k === 't' || D.orig.ar || (D.orig.k === 'g' && (D.orig.shape === 'square' || D.orig.shape === 'circle'))) { var k = Math.max(w / D.orig.w, hh / D.orig.h); w = D.orig.w * k; hh = D.orig.h * k; }
         var mx = ox + sx * w / 2, my = oy + sy * hh / 2, c2 = Math.cos(D.th), s3 = Math.sin(D.th);
         var ncx = D.cx + mx * c2 - my * s3, ncy = D.cy + mx * s3 + my * c2;
         patch = { x: Math.round(ncx - w / 2), y: Math.round(ncy - hh / 2), w: Math.round(w), h: Math.round(hh) };
+        if (D.orig.k === 't') patch.fs = Math.max(6, Math.round((D.orig.fs || 36) * w / D.orig.w));
       }
-      if (V.bg && D.h !== 'rot' && D.h !== 'nl' && D.h !== 'nr') {
+      if (V.bg && D.h !== 'rot' && D.h !== 'nl' && D.h !== 'nr' && !(D.orig.k === 't' && /^(nw|ne|sw|se)$/.test(D.h))) {
         var G = 20, sn = function (v) { return Math.round(v / G) * G; };
         if (D.h === 'move') { patch.x = sn(patch.x); patch.y = sn(patch.y); }
         else if (D.orig.k !== 'i' && !D.orig.r && !D.orig.ar) { var x2 = sn(patch.x + patch.w), y2 = sn(patch.y + patch.h); patch.x = sn(patch.x); patch.y = sn(patch.y); patch.w = Math.max(G, x2 - patch.x); patch.h = Math.max(G, y2 - patch.y); }
@@ -797,18 +816,46 @@ window.WB = (function () {
       if (o.v) t.textContent = o.txt || '';
       else {
         t.innerHTML = o.txt ? lineHtml(o) : '<div class="lns"><div class="ln"><br></div></div>'; tail = t.querySelector('.lns').lastChild;
-        var bar = document.createElement('div'); bar.className = 'edit-al'; bar.title = '游標在哪一行（或反白跨過幾行），就只調整那幾行的對齊';
-        [['l', '⬅'], ['c', '↔'], ['r', '➡']].forEach(function (z) {
-          var b = document.createElement('button'); b.type = 'button'; b.textContent = z[1]; b.title = { l: '這幾行靠左', c: '這幾行置中', r: '這幾行靠右' }[z[0]];
-          b.onmousedown = function (ev) { ev.preventDefault(); ev.stopPropagation(); }; b.onpointerdown = function (ev) { ev.stopPropagation(); };
-          b.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); alignLines(t, z[0]); }; bar.appendChild(b);
+        var bar = document.createElement('div'); bar.className = 'edit-al';
+        var hold = false;
+        function mk(tag, cls, txt, title) { var x = document.createElement(tag); if (cls) x.className = cls; if (txt) x.textContent = txt; if (title) x.title = title; return x; }
+        function keep(x) { x.onmousedown = function (ev) { if (x.tagName !== 'INPUT') ev.preventDefault(); ev.stopPropagation(); }; x.onpointerdown = function (ev) { ev.stopPropagation(); }; return x; }
+        function cmd(c, v) { try { document.execCommand('styleWithCSS', false, true); } catch (x) {} document.execCommand(c, false, v); }
+        var saved = null;
+        function saveSel() { var sl2 = getSelection(); saved = sl2 && sl2.rangeCount && t.contains(sl2.getRangeAt(0).commonAncestorContainer) ? sl2.getRangeAt(0).cloneRange() : null; }
+        function restoreSel() { t.focus(); if (saved) { var sl3 = getSelection(); sl3.removeAllRanges(); sl3.addRange(saved); } }
+        function colorize(c) { restoreSel(); cmd('foreColor', c); saveSel(); }
+        var r1 = mk('div', 'eal-r');
+        r1.appendChild(mk('span', 'eal-l', '選取文字：'));
+        [['bold', 'B', '粗體（Ctrl+B）', 'eb'], ['italic', 'I', '斜體（Ctrl+I）', 'ei'], ['underline', 'U', '底線（Ctrl+U）', 'eu']].forEach(function (z) {
+          var b = keep(mk('button', z[3], z[1], z[2])); b.type = 'button'; b.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); cmd(z[0]); }; r1.appendChild(b);
         });
-        var hb = document.createElement('span'); hb.textContent = '只調整游標所在的行'; bar.insertBefore(hb, bar.firstChild); document.body.appendChild(bar); e._bar = bar;
+        r1.appendChild(mk('span', 'eal-l', '　整行：'));
+        [['l', '⬅'], ['c', '↔'], ['r', '➡']].forEach(function (z) {
+          var b = keep(mk('button', '', z[1], { l: '這幾行靠左', c: '這幾行置中', r: '這幾行靠右' }[z[0]])); b.type = 'button';
+          b.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); alignLines(t, z[0]); }; r1.appendChild(b);
+        });
+        bar.appendChild(r1);
+        var r2 = mk('div', 'eal-r'); r2.appendChild(mk('span', 'eal-l', '字色：'));
+        ['#111111', '#555555', '#e53935', '#f08c00', '#f5c400', '#16a34a', '#1e63d6', '#8e44ad', '#ff4fa3', '#8b5a2b', '#ffffff'].forEach(function (c) {
+          var b = keep(mk('button', 'eal-dot', '', c)); b.type = 'button'; b.style.background = c; b.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); cmd('foreColor', c); }; r2.appendChild(b);
+        });
+        var ci = keep(mk('input', 'eal-pick', '', '自選顏色')); ci.type = 'color'; ci.value = '#3157d5';
+        ci.onclick = function () { saveSel(); hold = true; };
+        ci.onchange = function () { hold = false; colorize(ci.value); };
+        window.addEventListener('focus', function fb() { window.removeEventListener('focus', fb); setTimeout(function () { if (hold) { hold = false; restoreSel(); } }, 400); });
+        r2.appendChild(ci);
+        if (window.EyeDropper) { var eb = keep(mk('button', 'eal-eye', '💧吸色', '吸取畫面上任何地方的顏色，套用到選取的文字')); eb.type = 'button'; eb.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); saveSel(); hold = true; new window.EyeDropper().open().then(function (rs) { hold = false; colorize(rs.sRGBHex); }).catch(function () { hold = false; restoreSel(); }); }; r2.appendChild(eb); }
+        bar.appendChild(r2);
+        t._hold = function () { return hold; };
+        document.body.appendChild(bar); e._bar = bar;
+        try { document.execCommand('styleWithCSS', false, true); } catch (x) {}
         var rr = e.getBoundingClientRect(), bw = bar.offsetWidth, bh = bar.offsetHeight; bar.style.left = Math.max(6, Math.min(innerWidth - bw - 6, rr.left)) + 'px'; bar.style.top = (rr.top - bh - 8 < 6 ? Math.min(innerHeight - bh - 6, rr.bottom + 8) : rr.top - bh - 8) + 'px';
       }
       t.focus();
       var r = document.createRange(); r.selectNodeContents(tail); r.collapse(false); var sl = getSelection(); sl.removeAllRanges(); sl.addRange(r);
-      t.onblur = finishEdit;
+      t.onblur = function () { if (t._hold && t._hold()) return; finishEdit(); };
+      t.onpaste = function (ev) { var tx = (ev.clipboardData || window.clipboardData).getData('text/plain'); ev.preventDefault(); document.execCommand('insertText', false, tx); };
       t.onkeydown = function (k) { if (k.key === 'Escape') t.blur(); k.stopPropagation(); };
     };
     function alignLines(t, a) {
@@ -819,24 +866,63 @@ window.WB = (function () {
         if (!inside || rg.intersectsNode(c)) { c.dataset.al = a; c.style.textAlign = ALM[a]; }
       });
     }
+    var colorCtx = null;
+    function hexOf(c) { try { colorCtx = colorCtx || document.createElement('canvas').getContext('2d'); colorCtx.fillStyle = '#000000'; colorCtx.fillStyle = c; var v = colorCtx.fillStyle; return /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : ''; } catch (x) { return ''; } }
+    /* 把編輯中的畫面讀回「每一段、每一小段文字的樣式」 */
+    function readRich(w) {
+      var paras = [], cur = null, brk = false;
+      function start(al) { cur = { runs: [], al: al || '' }; paras.push(cur); brk = false; }
+      function push(text, st) {
+        if (!text) return; if (brk || !cur) start(cur ? cur.al : '');
+        var l = cur.runs[cur.runs.length - 1];
+        if (l && !!l.b === !!st.b && !!l.i === !!st.i && !!l.u === !!st.u && (l.c || '') === (st.c || '')) l.t += text;
+        else { var r = { t: text }; if (st.b) r.b = 1; if (st.i) r.i = 1; if (st.u) r.u = 1; if (st.c) r.c = st.c; cur.runs.push(r); }
+      }
+      function styleOf(n, st) {
+        var q = { b: st.b, i: st.i, u: st.u, c: st.c }, tg = n.tagName;
+        if (tg === 'B' || tg === 'STRONG') q.b = 1; if (tg === 'I' || tg === 'EM') q.i = 1; if (tg === 'U') q.u = 1;
+        if (tg === 'FONT' && n.getAttribute('color')) q.c = hexOf(n.getAttribute('color'));
+        var cs = n.style; if (cs) {
+          if (cs.fontWeight) q.b = (cs.fontWeight === 'bold' || +cs.fontWeight >= 600) ? 1 : 0;
+          if (cs.fontStyle) q.i = cs.fontStyle === 'italic' ? 1 : 0;
+          var td = cs.textDecorationLine || cs.textDecoration || ''; if (td) q.u = td.indexOf('underline') >= 0 ? 1 : 0;
+          if (cs.color) q.c = hexOf(cs.color);
+        }
+        return q;
+      }
+      function walk(n, st) {
+        Array.prototype.forEach.call(n.childNodes, function (c) {
+          if (c.nodeType === 3) { c.textContent.split('\n').forEach(function (part, k) { if (k > 0) brk = true; push(part, st); }); }
+          else if (c.nodeType === 1) {
+            if (c.tagName === 'BR') { if (c.nextSibling) brk = true; }
+            else if (c.tagName === 'DIV' || c.tagName === 'P') { if (cur && cur.runs.length) brk = true; walk(c, styleOf(c, st)); brk = true; }
+            else walk(c, styleOf(c, st));
+          }
+        });
+      }
+      Array.prototype.forEach.call(w.childNodes, function (c) {
+        start(c.nodeType === 1 && c.dataset ? c.dataset.al : '');
+        if (c.nodeType === 3) push(c.textContent, {});
+        else if (c.nodeType === 1) walk(c, styleOf(c, {}));
+      });
+      return paras;
+    }
     function finishEdit() {
       if (!editing) return; var id = editing; editing = null;
       var e = els[id], o = find(id); if (!e || !o) return;
       var t = o.k === 'g' ? e.lastChild : e.firstChild; t.contentEditable = 'false'; e.classList.remove('editing'); t.onblur = null;
       if (e._bar) { e._bar.remove(); e._bar = null; }
-      var w = o.v ? null : t.querySelector('.lns'), txt, als = null;
+      var w = o.v ? null : t.querySelector('.lns'), txt, als = null, rt = null;
       if (w) {
-        var ps = [], as = [];
-        Array.prototype.forEach.call(w.childNodes, function (c) {
-          var s = c.nodeType === 3 ? c.textContent : (c.innerText != null ? c.innerText : c.textContent), a = c.nodeType === 1 && c.dataset ? (c.dataset.al || '') : '';
-          s = s.replace(/\n$/, ''); s.split('\n').forEach(function (x) { ps.push(x); as.push(a); });
-        });
-        while (ps.length > 1 && ps[ps.length - 1] === '') { ps.pop(); as.pop(); }
-        txt = ps.join('\n'); if (as.some(function (x) { return x; })) als = as;
+        var rd = readRich(w);
+        while (rd.length > 1 && !rd[rd.length - 1].runs.length) rd.pop();
+        txt = rd.map(function (q) { return q.runs.map(function (r) { return r.t; }).join(''); }).join('\n');
+        var as = rd.map(function (q) { return q.al; }); if (as.some(function (x) { return x; })) als = as;
+        if (rd.some(function (q) { return q.runs.some(function (r) { return r.b || r.i || r.u || r.c; }); })) rt = rd.map(function (q) { return q.runs; });
       } else txt = t.innerText.replace(/\n$/, '');
       t._h = null;
-      var alsOld = JSON.stringify(o.als || null), alsNew = JSON.stringify(als);
-      if (txt !== (o.txt || '') || alsOld !== alsNew) change(o, { txt: txt, als: als }, true); else dirty = true;
+      var alsOld = JSON.stringify(o.als || null), alsNew = JSON.stringify(als), rtOld = JSON.stringify(o.rt || null), rtNew = JSON.stringify(rt);
+      if (txt !== (o.txt || '') || alsOld !== alsNew || rtOld !== rtNew) change(o, { txt: txt, als: als, rt: rt }, true); else dirty = true;
     }
     V.finishEdit = finishEdit;
     /* YouTube 影片控制 */

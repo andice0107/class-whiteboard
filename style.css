@@ -648,6 +648,16 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 
 .wb-txt .lns{width:100%}
 .wb-txt .ln{min-height:1.35em}
-.edit-al{position:fixed;display:flex;align-items:center;gap:4px;background:#fff;border:2px solid #3157d5;border-radius:999px;padding:2px 8px;font-size:13px;font-weight:700;color:#1c3d6e;z-index:95;white-space:nowrap;box-shadow:0 2px 8px #0003}
-.edit-al button{border:0;background:#eef2ff;border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;padding:0}
+.edit-al{position:fixed;display:flex;flex-direction:column;gap:4px;background:#fff;border:2px solid #3157d5;border-radius:14px;padding:4px 10px;font-size:13px;font-weight:700;color:#1c3d6e;z-index:95;white-space:nowrap;box-shadow:0 2px 8px #0003}
+.edit-al .eal-r{display:flex;align-items:center;gap:4px}
+.edit-al .eal-l{font-size:12px;color:#5b6785}
+.edit-al button{border:0;background:#eef2ff;border-radius:8px;min-width:30px;height:30px;font-size:16px;cursor:pointer;padding:0 4px}
 .edit-al button:hover{background:#c9d6ff}
+.edit-al .eb{font-weight:900}.edit-al .ei{font-style:italic;font-family:serif}.edit-al .eu{text-decoration:underline}
+.edit-al .eal-dot{min-width:22px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccd}
+.edit-al .eal-pick{width:30px;height:26px;padding:0;border:1px solid #ccd;border-radius:6px;background:none;cursor:pointer}
+.edit-al .eal-eye{font-size:12px;font-weight:700;padding:0 8px}
+.wb-sel .eg-n{left:50%;top:0;cursor:ns-resize;width:calc(14px * var(--inv,1));height:calc(14px * var(--inv,1))}
+.wb-sel .eg-s{left:50%;top:100%;cursor:ns-resize;width:calc(14px * var(--inv,1));height:calc(14px * var(--inv,1))}
+.wb-sel .eg-e{left:100%;top:50%;cursor:ew-resize;width:calc(14px * var(--inv,1));height:calc(14px * var(--inv,1))}
+.wb-sel .eg-w{left:0;top:50%;cursor:ew-resize;width:calc(14px * var(--inv,1));height:calc(14px * var(--inv,1))}
