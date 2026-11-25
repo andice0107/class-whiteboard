@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var HAS_TTS = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
   var TTS = { on: false, rate: 1, voice: '', dir: 'h', q: [], i: 0, st: 'idle', gen: 0 };
-  try { var tt0 = JSON.parse(localStorage.getItem('wb-tts') || 'null'); if (tt0) { TTS.rate = Math.max(0.5, Math.min(1.6, +tt0.rate || 1)); TTS.voice = tt0.voice || ''; TTS.dir = tt0.dir === 'v' ? 'v' : 'h'; } } catch (e) {}
+  try { var tt0 = JSON.parse(localStorage.getItem('wb-tts') || 'null'); if (tt0) { TTS.rate = Math.max(0.5, Math.min(1.6, +tt0.rate || 1)); TTS.voice = tt0.voice || ''; TTS.dir = tt0.dir === 'v' ? 'v' : 'h'; TTS.sym = !!tt0.sym; } } catch (e) {}
   var COLORS = ['#111111', '#e53935', '#1e63d6', '#16a34a', '#f08c00', '#8e44ad', '#ff4fa3', '#ffffff'];
   var PALETTE = ['#111111', '#555555', '#e53935', '#f08c00', '#f5c400', '#16a34a', '#1e63d6', '#8e44ad', '#ff4fa3', '#8b5a2b', '#ffffff',
     '#ffd6e0', '#ffe5c2', '#fff3a6', '#d9f5d0', '#cfe8ff', '#e6d9ff', '#ffcccc', '#c8f0ec'];
@@ -1209,7 +1209,7 @@
   });
 
     /* ---------- 唸讀文字框（瀏覽器內建語音；同一個聲音調快慢，不會變聲） ---------- */
-  function ttsSave() { try { localStorage.setItem('wb-tts', JSON.stringify({ rate: TTS.rate, voice: TTS.voice, dir: TTS.dir })); } catch (e) {} }
+  function ttsSave() { try { localStorage.setItem('wb-tts', JSON.stringify({ rate: TTS.rate, voice: TTS.voice, dir: TTS.dir, sym: !!TTS.sym })); } catch (e) {} }
   function ttsVoices() { try { return speechSynthesis.getVoices().filter(function (v) { return /^zh/i.test(v.lang) || /chinese|國語|中文|普通話|台灣|臺灣/i.test(v.name); }); } catch (e) { return []; } }
   function ttsPick() {
     var vs = ttsVoices(); if (!vs.length) return null;
@@ -1219,6 +1219,7 @@
   }
   function ttsChunks(text) {
     var out = [];
+    if (!TTS.sym) text = String(text || '').replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200d\ufe0e\ufe0f\u20e3\p{So}]/gu, '');   /* 預設不唸 emoji 和符號 */
     String(text || '').split('\n').forEach(function (line) {
       (line.match(/[^。！？!?；;]+[。！？!?；;]*/g) || []).forEach(function (s) {
         s = s.trim(); if (!s) return;
@@ -1298,6 +1299,7 @@
       [['h', '橫向（由上到下）'], ['v', '直向（由右到左）']].forEach(function (z) { dr.appendChild(btn('btn sm' + (TTS.dir === z[0] ? ' primary' : ''), z[1], function () { TTS.dir = z[0]; ttsSave(); readPanel(tbAnchor('read')); })); });
       p.appendChild(dr);
       p.appendChild(el('p', 'hint', '直式文字框請選「直向」，會從最右邊那一行開始唸；橫式文字框選哪個都是由上到下。'));
+      p.appendChild(btn('mi' + (TTS.sym ? ' on' : ''), TTS.sym ? '✅ 唸出符號與 emoji：是（按一下改成不唸）' : '唸出符號與 emoji：否（按一下改成要唸）', function () { TTS.sym = !TTS.sym; ttsSave(); readPanel(tbAnchor('read')); }));
       p.appendChild(el('div', 'pop-l', '速度（同一個聲音變快變慢）'));
       var sr = el('div', 'pop-row'), sl = el('input'), sv = el('b', 'tts-rate', TTS.rate.toFixed(2).replace(/0$/, '') + '×');
       sl.type = 'range'; sl.min = 0.5; sl.max = 1.6; sl.step = 0.05; sl.value = TTS.rate; sl.oninput = function () { sv.textContent = (+sl.value).toFixed(2).replace(/0$/, '') + '×'; }; sl.onchange = function () { ttsSetRate(+sl.value); };
