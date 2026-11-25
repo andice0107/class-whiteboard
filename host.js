@@ -858,6 +858,7 @@
       [['⤒ 置頂', 'front'], ['↑ 上移', 'up'], ['↓ 下移', 'down'], ['⤓ 置底', 'back']].forEach(function (z) { lyr.appendChild(btn('btn sm', z[0], function () { V.reorder([o.id], z[1]); again(); })); });
       lyr.appendChild(btn('btn sm', '🗂', function () { closePop(); if (!layerBox) layersPanel(); }));
       if (o.k !== 's') m.appendChild(btn('mi' + (o.hd ? ' on' : ''), o.hd ? '👁 揭曉給學生看' : '🙈 先隱藏（學生看不到，之後再揭曉）', function () { chg({ hd: o.hd ? false : true }); }));
+      if (o.txt && /^[tng]$/.test(o.k)) m.appendChild(btn('mi', '🔊 唸讀這個物件', function () { closePop(); ttsSpeakObj(o); }));
       if (o.lk) { m.appendChild(el('div', 'pop-l', '解除鎖定後才能移動、縮放、修改。')); return; }
       if (o.k === 'g' && (o.shape === 'clock' || o.shape === 'numline')) {
         m.appendChild(el('div', 'pop-l', o.shape === 'clock' ? '時間' : '數線範圍'));
@@ -1265,7 +1266,7 @@
     ttsBar();
   }
   function ttsBar() {
-    var b = $('tts-bar'), show = TTS.on && TTS.st !== 'idle';
+    var b = $('tts-bar'), show = TTS.st !== 'idle';
     if (!b) {
       b = el('div', 'tts-bar'); b.id = 'tts-bar'; document.body.appendChild(b);
       b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
