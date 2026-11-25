@@ -1172,6 +1172,13 @@
       if (S.pagesOpen && S.mode !== 'show' && !ed) { S.pagesOpen = false; pgPeek = false; save(); renderPages(); setTimeout(V.refit, 50); return; }
     }
     var mkm = !ed && $('modal').hidden ? mkMatch(e) : null; if (mkm) { e.preventDefault(); gotoMode(mkm); return; }
+    var pgd = !ed && $('modal').hidden && S.mode !== 'work' && tv.kind === 'page' && MK.on ? pgKeyMatch(e) : 0;
+    if (pgd) {
+      e.preventDefault(); closePop();
+      var pi = pageIdx(S.cur) + pgd;
+      if (pi < 0 || pi >= S.pages.length) return toast(pi < 0 ? '已經是第一頁' : '已經是最後一頁');
+      goPage(pi); return;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X') && !ed && S && S.mode !== 'show' && $('modal').hidden && selObjs().length) {
       e.preventDefault(); copyObjs(e.key === 'x' || e.key === 'X'); return;
     }
@@ -1625,7 +1632,7 @@
     toast('✏️ 作業模式開始' + (mins ? '，' + mins + ' 分鐘後自動回到上課模式' : '（不限時）'));
   }
   /* ---------- 模式快捷鍵（Windows／Mac 各有預設，直接按下想用的組合就能設定） ---------- */
-  var MK_DEF = function () { return { on: true, map: { present: { c: 'Digit1', a: 1 }, show: { c: 'Digit2', a: 1 }, work: { c: 'Digit3', a: 1 } } }; };
+  var MK_DEF = function () { return { on: true, pg: { s: true, key: 'arrow' }, map: { present: { c: 'Digit1', a: 1 }, show: { c: 'Digit2', a: 1 }, work: { c: 'Digit3', a: 1 } } }; };
   var MK = MK_DEF();
   try {
     var mk0 = JSON.parse(localStorage.getItem('wb-modekeys') || 'null');
@@ -1636,6 +1643,11 @@
       ['present', 'show', 'work'].forEach(function (m) { var k = mk0.keys[m] || ''; MK.map[m] = Object.assign({ c: /^\d$/.test(k) ? 'Digit' + k : 'Key' + k.toUpperCase() }, { c0: 1 }, f.ctrl ? { k: 1 } : {}, f.alt ? { a: 1 } : {}, f.shift ? { s: 1 } : {}, f.meta ? { m: 1 } : {}); });
     }
   } catch (e) {}
+  var PGK = { arrow: ['ArrowLeft', 'ArrowRight', '← →'], ud: ['ArrowUp', 'ArrowDown', '↑ ↓'], pg: ['PageUp', 'PageDown', 'PageUp PageDown'] };
+  function pgNorm() { var q = MK.pg; if (!q || typeof q.m === 'string' || !('s' in q || 'a' in q || 'k' in q || 'm' in q)) { var o = q && q.m; MK.pg = { s: o ? o === 'shift' : true, a: o === 'alt', k: o === 'ctrl', m: o === 'meta', key: 'arrow' }; } if (!PGK[MK.pg.key]) MK.pg.key = 'arrow'; }
+  pgNorm();
+  function pgKeyMatch(e) { var q = MK.pg, ks = PGK[q.key]; if (!!q.s !== e.shiftKey || !!q.a !== e.altKey || !!q.k !== e.ctrlKey || !!q.m !== e.metaKey) return 0; return e.key === ks[0] ? -1 : e.key === ks[1] ? 1 : 0; }
+  function pgLabel() { var q = MK.pg, p = []; if (q.k) p.push(IS_MAC ? '⌃' : 'Ctrl'); if (q.a) p.push(IS_MAC ? '⌥' : 'Alt'); if (q.s) p.push(IS_MAC ? '⇧' : 'Shift'); if (q.m) p.push(IS_MAC ? '⌘' : 'Win'); return p.join(IS_MAC ? '' : '＋') + (IS_MAC ? '' : '＋') + PGK[q.key][2]; }
   function mkSave() { try { localStorage.setItem('wb-modekeys', JSON.stringify(MK)); } catch (e) {} }
   function mkCode(c) { return /^Digit(\d)$/.test(c) ? RegExp.$1 : /^Key([A-Z])$/.test(c) ? RegExp.$1 : /^Numpad(\d)$/.test(c) ? '小鍵盤' + RegExp.$1 : c; }
   function mkLabel(d) {
@@ -1681,6 +1693,20 @@
         var b = btn('btn sm', '設定', function () { mkRec = z[0]; b.textContent = '請按下想用的組合…（Esc 取消）'; b.classList.add('primary'); });
         row.appendChild(b); box.appendChild(row);
       });
+      pgNorm();
+      var pgr = el('div', 'pop-row'); pgr.appendChild(el('span', '', '📄 快速換頁　按住（可多選）'));
+      [['s', 'Shift', '⇧ Shift'], ['a', IS_MAC ? 'Option' : 'Alt', IS_MAC ? '⌥ Option' : 'Alt'], ['k', IS_MAC ? 'Control' : 'Ctrl', IS_MAC ? '⌃ Control' : 'Ctrl'], ['m', IS_MAC ? 'Command' : 'Win', IS_MAC ? '⌘ Command' : 'Win']].forEach(function (z) {
+        pgr.appendChild(btn('btn sm' + (MK.pg[z[0]] ? ' primary' : ''), z[2], function () {
+          var n = !MK.pg[z[0]], cnt = ['s', 'a', 'k', 'm'].filter(function (x) { return MK.pg[x]; }).length;
+          if (!n && cnt <= 1) { mkNote = '至少要選一個鍵，才不會打字時誤觸發'; return modeKeysBox(); }
+          MK.pg[z[0]] = n; mkSave(); modeKeysBox();
+        }));
+      });
+      box.appendChild(pgr);
+      var pgr2 = el('div', 'pop-row'); pgr2.appendChild(el('span', '', '再按　'));
+      Object.keys(PGK).forEach(function (k) { pgr2.appendChild(btn('btn sm' + (MK.pg.key === k ? ' primary' : ''), PGK[k][2], function () { MK.pg.key = k; mkSave(); modeKeysBox(); })); });
+      box.appendChild(pgr2);
+      box.appendChild(el('p', 'hint', '目前：' + pgLabel() + '（前一個＝上一頁，後一個＝下一頁）。在上課和簡報模式的畫布上有效；打字或開著視窗時不會觸發。Windows 和 Mac 各自設定，記在各自的電腦。注意：Alt＋← 在 Windows 瀏覽器是「上一頁」、⌘＋← 在 Mac 也可能是，不一定搶得過，建議用 Shift 或 Control。'));
       if (mkNote) { box.appendChild(el('p', 'warn-p', mkNote)); mkNote = ''; }
       box.appendChild(btn('btn sm', '還原預設', function () { MK = MK_DEF(); mkSave(); modeKeysBox(); }));
       var rb = el('div', 'modal-btns'); rb.appendChild(btn('btn primary', '完成', closeModal)); box.appendChild(rb);
@@ -3078,7 +3104,7 @@
     '<h4>☁️ 自動儲存</h4><p>專案存到「我的專案」之後，你每次修改，停手約 6 秒就會自動同步到雲端同一個專案，不用再按存。要另存新版本請按「另存成一份新的」。要保留舊版本，請先另存再修改。</p>'+
     '<h4>👥 學生與分組欄</h4><p>可以按 Esc 或右上 ✕ 收起；預設沒有操作 3 秒後也會自動收起（滑鼠在欄裡面、正在輸入、有勾選學生時不會收），不想要的話取消欄頭的「3 秒自動收起」。收起只是把欄位藏起來，分組、學生名單和勾選都不會變。</p>'+
     '<h4>⎋ Esc 鍵</h4><p>最後面還會收起左邊（或右邊）的頁面欄：什麼視窗都沒開時按 Esc，頁面欄就收起來，要再打開就按邊上的「▶ 頁面」。全螢幕時（Chrome、Edge）Esc 會先留給畫板關視窗，要退出全螢幕請按右上「🗗 退出」或長按 Esc；Safari、Firefox 因為瀏覽器規定，按 Esc 會直接退出全螢幕，建議改按視窗上的「✕」。任何跳出來的視窗、選單、任務一覽、圖層面板，都可以按 Esc 關掉，一次關一層；最後才會關掉畫面上方的提示卡。</p>'+
-    '<h4>⌨️ 模式快捷鍵</h4><p>預設：Windows 是 Alt＋1／2／3，Mac 是 ⌥＋1／2／3，分別切到上課／簡報／作業（兩個鍵）。可以在「模式」選單最下面的「設定模式快捷鍵」按「設定」後直接按下想用的組合（一到三個鍵都行，也可以單獨用 F1～F12），也可以關掉。</p>'+
+    '<h4>⌨️ 模式快捷鍵</h4><p>另外有「快速換頁」：預設按住 Shift 再按 ← 或 →，在上課和簡報模式就能上一頁／下一頁；修飾鍵（Shift、Alt／Option、Ctrl／Control、Win／Command）可多選，方向鍵也可改成 ↑↓ 或 PageUp／PageDown，Windows 和 Mac 都能自訂。預設：Windows 是 Alt＋1／2／3，Mac 是 ⌥＋1／2／3，分別切到上課／簡報／作業（兩個鍵）。可以在「模式」選單最下面的「設定模式快捷鍵」按「設定」後直接按下想用的組合（一到三個鍵都行，也可以單獨用 F1～F12），也可以關掉。</p>'+
     '<h4>👩‍🎓 讓學生拖動物件</h4><p>在物件（或圈選／群組）的右鍵選單按「學生可以拖動」：開了的物件，學生可以移動、縮放、旋轉，但不能改內容、不能刪除、不能解鎖。上課模式全班看同一個畫面，學生拖了全班都會看到；作業模式每組各自在自己的畫布上拖。想收回：再按一次就關；要一次全收，到工具欄「畫布物件」按「🛑 收回學生拖動權」，或按「全部鎖定」，學生馬上不能拖。簡報模式和作業模式按「鎖定這組操作」時學生也不能拖。</p>'+
     '<h4>🔗 群組</h4><p>用「選取」圈選（或按住 Shift 點選）多個物件，按右鍵或「⋯」→「🔗 組成群組」（快速鍵 Ctrl／⌘＋G）。群組裡點到任何一個，整組就會一起被選取，一起移動、縮放、旋轉、複製。要分開編輯時，再選到它們→「✂️ 解除群組」（Ctrl／⌘＋Shift＋G）。群組只存在於這一頁的畫布，學生看到的畫面不受影響。</p>'+
     '<h4>🖼️ 編輯圖片</h4><p>GIF 動圖放進畫布時先停住（左上角有 ▶），在「選取」狀態下點一下就開始一直循環播放（圖片選單可開關「學生可以自己點播放／暫停」，預設關），再點一下就暫停在當時那一格（再點會從頭播）；你按了，全班看到的一起動。學生開放後自己點動圖，只會影響他自己的畫面。超過 1.5 MB 會提醒同步較慢（上限 20 MB），可用「🗜 壓縮圖像」變小；動圖不能裁切、調色、去背，也可以從網站直接把圖片拖到畫布，網站不讓抓時請先「另存圖片」。在圖片上按右鍵（或選取後點兩下）→「圖片編輯」：<b>✂️ 裁切</b>（拖白框和四個角，按完成）、<b>⚫ 黑白</b>、亮度＋－、對比＋－、透明度、圓角（可變圓形）、框線顏色和粗細、<b>🪄 去背</b>（白底圖變透明），<b>🗜 壓縮圖像</b>（JPG 壓完還是 JPG、PNG 還是 PNG、GIF 還是 GIF，可調尺寸／品質／顏色數／跳格，GIF 壓縮需電腦版 Chrome 或 Edge），還有<b>↩️ 恢復原圖</b>隨時找回完整原圖。裁切和調整學生看到的也會一樣。</p>'+
