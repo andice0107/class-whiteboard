@@ -498,17 +498,18 @@ window.WB = (function () {
       if (V.locked || list.some(function (o) { return o.lk; })) {
         /* 鎖住時不能拖動：但「點一下」要能取消多選，或改選底下那一個物件 */
         if (h !== 'gmove') { opt.onLockedHint && opt.onLockedHint(); return; }
-        var st = { pid: e.pointerId, p: pos(e) };
+        if (e.button !== 0) return;
+        var st = { pid: e.pointerId, p: pos(e), t: Date.now() };
         var up = function (ev) {
           if (ev.pointerId !== st.pid) return; window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true);
-          var q = pos(ev); if (ev.type === 'pointerup' && Math.hypot(q[0] - st.p[0], q[1] - st.p[1]) < 6) clickGroup(st.p); else opt.onLockedHint && opt.onLockedHint();
+          var q = pos(ev); if (ev.type === 'pointerup' && Math.hypot(q[0] - st.p[0], q[1] - st.p[1]) < 6) { if (Date.now() - st.t < 450) clickGroup(st.p); } else opt.onLockedHint && opt.onLockedHint();
         };
         window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true); return;
       }
       var b = groupBox(list), origs = {}; list.forEach(function (o) { origs[o.id] = o; });
       var anc = { gnw: [b[2], b[3]], gne: [b[0], b[3]], gsw: [b[2], b[1]], gse: [b[0], b[1]] }[h];
       var cor = { gnw: [b[0], b[1]], gne: [b[2], b[1]], gsw: [b[0], b[3]], gse: [b[2], b[3]] }[h];
-      gdrag = { h: h, p: pos(e), b: b, origs: origs, anc: anc, cor: cor, id: e.pointerId, moved: false, cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2 };
+      gdrag = { btn: e.button, t0: Date.now(), h: h, p: pos(e), b: b, origs: origs, anc: anc, cor: cor, id: e.pointerId, moved: false, cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2 };
       try { stage.setPointerCapture(e.pointerId); } catch (x) {}
     }
     function groupMove(e) {
@@ -542,7 +543,7 @@ window.WB = (function () {
       dirty = true;
     }
     function groupUp() {
-      var G = gdrag; gdrag = null; if (!G.moved && G.h === 'gmove') return clickGroup(G.p); if (!G.moved || !G.news) return;
+      var G = gdrag; gdrag = null; if (!G.moved && G.h === 'gmove') { if (G.btn === 0 && Date.now() - G.t0 < 450) clickGroup(G.p); return; } if (!G.moved || !G.news) return;
       var origs = []; for (var id in G.origs) origs.push(G.origs[id]);
       groupCommit(G.news, origs); sel._id = null;
     }
