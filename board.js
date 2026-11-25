@@ -725,7 +725,7 @@ window.WB = (function () {
     if (opt.wheelZoom) stage.addEventListener('wheel', function (e) {
       var r = top.getBoundingClientRect();
       var zk = V.zoomKey || 'ctrl';
-      if (e.ctrlKey || (zk === 'alt' && e.altKey) || (zk === 'meta' && e.metaKey) || (zk === 'shift' && e.shiftKey) || (zk === 'z' && zHeld)) {
+      if (e.ctrlKey || V.wheelPlain || (zk === 'alt' && e.altKey) || (zk === 'meta' && e.metaKey) || (zk === 'shift' && e.shiftKey) || (zk === 'z' && zHeld)) {
         e.preventDefault();
         var p = pos(e), z = Math.max(1, Math.min(8, V.vp.z * Math.exp(-e.deltaY * 0.0022)));
         var ox = (e.clientX - r.left) / scale, oy = (e.clientY - r.top) / scale;

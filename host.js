@@ -376,6 +376,7 @@
   function zkName(k) { var f = ZKEYS.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
   try { V.zoomKey = localStorage.getItem('wb-zoomkey') || ''; } catch (e) { V.zoomKey = ''; }
   try { V.panKey = localStorage.getItem('wb-pankey') || 'space'; } catch (e) { V.panKey = 'space'; }
+  try { V.wheelPlain = localStorage.getItem('wb-wheelplain') === '1'; } catch (e) { V.wheelPlain = false; }
   if (!ZKEYS.some(function (x) { return x[0] === V.zoomKey; })) V.zoomKey = IS_MAC ? 'alt' : 'ctrl';
 
   function curBid() { return tv.kind === 'group' ? 'G:' + tv.gid : 'P:' + S.cur; }
@@ -663,6 +664,10 @@
     openPop(anchor, function (p) {
       p.appendChild(el('div', 'pop-h', '🔍 放大鏡'));
       p.appendChild(el('p', 'hint', '在畫板上框出要放大的地方（點一下是放大兩倍）' + (S.mode !== 'work' ? '，學生畫面會一起放大' : '') + '。'));
+      var wp = btn('btn sm' + (V.wheelPlain ? ' primary' : ''), '', function () { V.wheelPlain = !V.wheelPlain; try { localStorage.setItem('wb-wheelplain', V.wheelPlain ? '1' : '0'); } catch (e) {} wp.className = 'btn sm' + (V.wheelPlain ? ' primary' : ''); wp.textContent = wpLabel(); toast(V.wheelPlain ? '🖱️ 單純轉滾輪就會放大縮小（移動畫面請用兩指拖、中鍵拖，或按住移動鍵拖）' : '已關閉：要按住快捷鍵再轉滾輪才會放大'); });
+      function wpLabel() { return V.wheelPlain ? '🖱️ 單純轉滾輪放大：開（按一下關閉）' : '🖱️ 單純轉滾輪放大：關（沒有鍵盤時可開）'; }
+      wp.textContent = wpLabel(); p.appendChild(wp);
+      p.appendChild(el('div', 'pop-l', '開啟後不用按任何鍵，滾輪直接放大縮小；這時放大後要移動畫面，請用平板兩指拖、滑鼠中鍵拖，或按住移動鍵＋拖曳。只存在這台裝置。'));
       p.appendChild(el('div', 'pop-l tag t2', '⌨️ 快捷鍵：按住這個鍵＋轉滑鼠滾輪'));
       var r = el('div', 'pop-row zk-row'), bt = {};
       function badge(k) { var st = ZK_TEST[k], c = APP_USED[k]; return st === 'ok' ? '<i class="zk ok">✅ 可用</i>' : st === 'bad' ? '<i class="zk bad">⛔ 被佔用</i>' : c ? '<i class="zk warn">⚠️ ' + c + '</i>' : '<i class="zk">未測試</i>'; }
