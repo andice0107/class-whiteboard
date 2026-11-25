@@ -479,8 +479,8 @@
     var t = $('toolbar'), byK = {};
     Array.prototype.slice.call(t.children).forEach(function (c) { if (c.dataset.tk) byK[c.dataset.tk] = c; });
     tbOrder().forEach(function (k) { if (byK[k]) t.appendChild(byK[k]); });
-    if (CAN_HOVER) [['pen', penPanel], ['erase', eraserPanel], ['lock', objectsPanel], ['shape', shapePanel], ['insert', insertPanel], ['class', classPanel], ['action', actionPanel]].forEach(function (z) {
-      var b = byK[z[0]]; if (!b) return; b.onmouseenter = hoverOpen(z[0], z[1]); b.onmouseleave = hovLeave;
+    [['pen', penPanel], ['erase', eraserPanel], ['lock', objectsPanel], ['shape', shapePanel], ['insert', insertPanel], ['class', classPanel], ['action', actionPanel]].forEach(function (z) {
+      var b = byK[z[0]]; if (!b) return; var ho = hoverOpen(z[0], z[1]); b.onmouseenter = function (e) { if (CAN_HOVER) ho(e); }; b.onmouseleave = function (e) { if (CAN_HOVER) hovLeave(e); };
     });
   }
   function savePrefs() {
@@ -509,6 +509,9 @@
     wrap.appendChild(btn('btn', '↺ 恢復預設順序', function () { TBO = []; savePrefs(); renderTools(); orderPanel(wrap); }));
   }
   var CAN_HOVER = !!(window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)').matches);
+  /* 不只看瀏覽器怎麼回答：滑鼠真的在畫面上移動就開啟「碰到就彈出」，手指或觸控筆點畫面就改回「按一下展開」 */
+  document.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse') CAN_HOVER = true; }, true);
+  document.addEventListener('pointerdown', function (e) { if (e.pointerType === 'touch' || e.pointerType === 'pen') CAN_HOVER = false; else if (e.pointerType === 'mouse') CAN_HOVER = true; }, true);
   var actT = null, hovT = null;
   function markHov(k) { if (!pop) return; pop.classList.add('hov'); pop._hk = k; pop.onmouseenter = function () { clearTimeout(actT); }; pop.onmouseleave = hovLeave; }
   $('toolbar').addEventListener('pointerdown', function () { if (pop && pop.classList.contains('hov')) { pop.classList.remove('hov'); pop._hk = null; } }, true);
@@ -1674,7 +1677,7 @@
   (function () {
     var mb = $('mode-btn'); mb.dataset.pop = 1;
     mb.onclick = function () { modePanel(mb); };
-    if (CAN_HOVER) { mb.onmouseenter = function () { clearTimeout(actT); clearTimeout(hovT); hovT = setTimeout(function () { if (pop && pop._hk === 'mode') return; modePanel(mb); markHov('mode'); }, 140); }; mb.onmouseleave = hovLeave; }
+    mb.onmouseenter = function () { if (!CAN_HOVER) return; clearTimeout(actT); clearTimeout(hovT); hovT = setTimeout(function () { if (pop && pop._hk === 'mode') return; modePanel(mb); markHov('mode'); }, 140); }; mb.onmouseleave = function (e) { if (CAN_HOVER) hovLeave(e); };
   })();
   function workBox() {
     var any = liveGroups().some(function (g) { return S.groups[g].cur; });
