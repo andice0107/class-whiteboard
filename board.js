@@ -592,7 +592,7 @@ window.WB = (function () {
       e.preventDefault();
       if (h === 'menu') { if (opt.onContext) opt.onContext(o, e.clientX, e.clientY); return; }
       if (!h) select(o.id);
-      if (o.lk) { if (o.an && !h && e.button === 0 && !V.locked && (!opt.canEdit || opt.canEdit(o))) { var lp = pos(e); lkTap = { id: o.id, pid: e.pointerId, x: lp[0], y: lp[1] }; } return; }
+      if (o.lk) { if ((o.an || ((o.k === 't' || o.k === 'n' || o.k === 'g') && o.txt && opt.onTextClick)) && !h && e.button === 0 && !V.locked && (!opt.canEdit || opt.canEdit(o))) { var lp = pos(e); lkTap = { id: o.id, pid: e.pointerId, x: lp[0], y: lp[1] }; } return; }
       var p = pos(e), cx = o.x + o.w / 2, cy = o.y + o.h / 2, th = (o.r || 0) * Math.PI / 180;
       dragStart = { o: o, orig: o, h: h || 'move', p: p, cx: cx, cy: cy, th: th, moved: false, link: e.target.closest('a'), id: e.pointerId };
       try { stage.setPointerCapture(e.pointerId); } catch (x) {}
@@ -654,7 +654,7 @@ window.WB = (function () {
     function onUp(e) {
       if (gdrag && e.pointerId === gdrag.id) return groupUp();
       if (lassoPid != null && e.pointerId === lassoPid) { lassoPid = null; var poly = lasso; lasso = null; dirty = true; var lb = lassoBase; lassoBase = null; if (poly && poly.length >= 6) { var got = lassoPick(poly); if (lb) got.forEach(function (id) { if (lb.indexOf(id) < 0) lb.push(id); }); V.setMulti(lb || got); } else if (lb) V.setMulti(lb); return; }
-      if (lkTap && e.pointerId === lkTap.pid) { var lt = lkTap, lq = pos(e); lkTap = null; var lo = find(lt.id); if (lo && lo.lk && lo.an && Math.hypot(lq[0] - lt.x, lq[1] - lt.y) < 8) gifToggle(lo); return; }
+      if (lkTap && e.pointerId === lkTap.pid) { var lt = lkTap, lq = pos(e); lkTap = null; var lo = find(lt.id); if (lo && lo.lk && Math.hypot(lq[0] - lt.x, lq[1] - lt.y) < 8) { if (lo.an) gifToggle(lo); else if (opt.onTextClick) opt.onTextClick(lo); } return; }
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
       if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); else if (o && o.an && D.h === 'move' && e.button === 0) gifToggle(o); else if (o && (o.k === 't' || o.k === 'n' || o.k === 'g') && o.txt && D.h === 'move' && e.button === 0 && opt.onTextClick) opt.onTextClick(o); return; }
