@@ -657,7 +657,7 @@ window.WB = (function () {
       if (lkTap && e.pointerId === lkTap.pid) { var lt = lkTap, lq = pos(e); lkTap = null; var lo = find(lt.id); if (lo && lo.lk && lo.an && Math.hypot(lq[0] - lt.x, lq[1] - lt.y) < 8) gifToggle(lo); return; }
       var D = dragStart; if (!D || e.pointerId !== D.id) return; dragStart = null;
       var o = find(D.o.id);
-      if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); else if (o && o.an && D.h === 'move' && e.button === 0) gifToggle(o); return; }
+      if (!D.moved) { if (D.link && D.h === 'move') window.open(D.link.href, '_blank', 'noopener'); else if (o && o.an && D.h === 'move' && e.button === 0) gifToggle(o); else if (o && (o.k === 't' || o.k === 'n' || o.k === 'g') && o.txt && D.h === 'move' && e.button === 0 && opt.onTextClick) opt.onTextClick(o); return; }
       if (o) change(o, {}, true, D.orig);
     }
     /* 學生：沒有拖拉權限時，點一下動圖在自己這邊播放／暫停 */

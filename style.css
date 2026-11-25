@@ -661,3 +661,8 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .wb-sel .eg-s{left:50%;top:100%;cursor:ns-resize;width:calc(14px * var(--inv,1));height:calc(14px * var(--inv,1))}
 .wb-sel .eg-e{left:100%;top:50%;cursor:ew-resize;width:calc(14px * var(--inv,1));height:calc(14px * var(--inv,1))}
 .wb-sel .eg-w{left:0;top:50%;cursor:ew-resize;width:calc(14px * var(--inv,1));height:calc(14px * var(--inv,1))}
+
+.tts-bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:96;background:#fff;border:2px solid #3157d5;border-radius:999px;padding:6px 14px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px #0004;font-weight:700;color:#1c3d6e;max-width:96vw;flex-wrap:wrap;justify-content:center}
+.tts-bar[hidden]{display:none}
+.tts-bar .tts-st{font-size:13px;color:#5b6785}
+.tts-bar .tts-rate{min-width:48px;text-align:center}
