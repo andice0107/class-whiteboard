@@ -679,3 +679,10 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .tts-bar .tts-r .tts-st{white-space:nowrap}
 .tts-bar .tts-r .tts-go{flex:1 1 auto;max-width:none;min-width:0}
 .tts-bar .tts-r .tts-rate{min-width:44px;text-align:center}
+.tts-bar{width:min(330px,96vw);padding:6px 8px;gap:4px}
+.tts-bar .tts-r{gap:3px}
+.tts-bar .tts-r .btn{font-size:12px;padding:3px 2px;min-width:0}
+.tts-bar .tts-st{font-size:11px}
+.tts-bar .tts-grip{font-size:14px;padding:0}
+.tts-bar .tts-r .tts-go{font-size:12px;padding:2px}
+.tts-bar .tts-r .tts-rate{min-width:34px;font-size:13px}
