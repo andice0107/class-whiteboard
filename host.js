@@ -1295,7 +1295,7 @@
     r1.appendChild(btn('btn sm', '↻重讀', ttsReplay));
     r1.appendChild(btn('btn sm', '⏹停止', ttsStop));
     var gsel = el('select', 'tts-go'); gsel.title = '選要從第幾句開始唸';
-    TTS.q.forEach(function (c, k) { var op = el('option', '', (k + 1) + '. ' + (c.length > 16 ? c.slice(0, 16) + '…' : c)); op.value = k; if (k === TTS.i) op.selected = true; gsel.appendChild(op); });
+    TTS.q.forEach(function (c, k) { var op = el('option', '', (k + 1) + '.' + c.slice(0, 4)); op.value = k; if (k === TTS.i) op.selected = true; gsel.appendChild(op); });
     gsel.onchange = function () { var k = +gsel.value; gsel.blur(); ttsGo(k); };
     r2.appendChild(gsel);
     r2.appendChild(el('span', 'tts-st', '速度'));
