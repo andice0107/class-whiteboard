@@ -671,3 +671,4 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .proj-grp-h{margin:8px 0 4px;padding:4px 8px;font-weight:700;font-size:14px;background:rgba(0,0,0,.05);border-radius:8px;cursor:pointer;user-select:none}
 .my-item .hint{white-space:nowrap;flex:none}
 .my-item b{min-width:0;flex:1 1 auto}
+.tts-bar{touch-action:none;cursor:grab}.tts-bar button{cursor:pointer}.tts-bar .tts-grip{color:#8a97b8;font-size:18px;line-height:1;padding:0 2px}

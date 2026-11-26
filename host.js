@@ -1270,10 +1270,21 @@
     var b = $('tts-bar'), show = TTS.st !== 'idle';
     if (!b) {
       b = el('div', 'tts-bar'); b.id = 'tts-bar'; document.body.appendChild(b);
-      b.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      b.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+        if (e.target.closest && e.target.closest('button,input')) return;
+        var r = b.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+        b.style.transform = 'none'; b.style.bottom = 'auto'; b.style.left = r.left + 'px'; b.style.top = r.top + 'px';
+        function mv(ev) { var x = Math.max(0, Math.min(innerWidth - 60, ev.clientX - dx)), y = Math.max(0, Math.min(innerHeight - 40, ev.clientY - dy)); b.style.left = x + 'px'; b.style.top = y + 'px'; ev.preventDefault(); }
+        function up() { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); try { sessionStorage.setItem('wb-ttsbar', JSON.stringify([parseFloat(b.style.left), parseFloat(b.style.top)])); } catch (e2) {} }
+        document.addEventListener('pointermove', mv, { passive: false }); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+        e.preventDefault();
+      });
+      try { var bp = JSON.parse(sessionStorage.getItem('wb-ttsbar') || 'null'); if (bp) { b.style.transform = 'none'; b.style.bottom = 'auto'; b.style.left = Math.min(bp[0], innerWidth - 80) + 'px'; b.style.top = Math.min(bp[1], innerHeight - 50) + 'px'; } } catch (e) {}
     }
     b.hidden = !show; if (!show) return;
     b.innerHTML = '';
+    var grip = el('span', 'tts-grip', '⠿'); grip.title = '按住這裡（或空白處）可以拖動唸讀條'; b.appendChild(grip);
     b.appendChild(el('span', 'tts-st', TTS.st === 'paused' ? '⏸ 已暫停' : '🔊 唸讀中 ' + Math.min(TTS.i + 1, TTS.q.length) + '/' + TTS.q.length));
     b.appendChild(btn('btn sm' + (TTS.st === 'paused' ? ' primary' : ''), TTS.st === 'paused' ? '▶ 繼續' : '⏸ 暫停', function () { TTS.st === 'paused' ? ttsResume() : ttsPause(); }));
     b.appendChild(btn('btn sm', '↻ 重讀', ttsReplay));
