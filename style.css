@@ -313,7 +313,7 @@ body.mode-show .seg button.on{background:#7048e8;color:#fff}
 .proj-box{max-width:620px}
 .pop-l.sec{margin-top:12px}
 .my-proj .g-login b{background:#fff;color:#4285f4;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;margin-right:4px;font-family:Arial,sans-serif}
-.my-list{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.my-list{max-height:max(380px,52vh);overflow:auto;display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .my-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #e5ded3;border-radius:8px;background:#fff}
 .my-item.on{border-color:#d97706;background:#fff7ed}
 .my-item b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
@@ -669,3 +669,5 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 
 .fold-h{cursor:pointer;user-select:none}
 .proj-grp-h{margin:8px 0 4px;padding:4px 8px;font-weight:700;font-size:14px;background:rgba(0,0,0,.05);border-radius:8px;cursor:pointer;user-select:none}
+.my-item .hint{white-space:nowrap;flex:none}
+.my-item b{min-width:0;flex:1 1 auto}
