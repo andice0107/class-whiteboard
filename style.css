@@ -666,3 +666,6 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .tts-bar[hidden]{display:none}
 .tts-bar .tts-st{font-size:13px;color:#5b6785}
 .tts-bar .tts-rate{min-width:48px;text-align:center}
+
+.fold-h{cursor:pointer;user-select:none}
+.proj-grp-h{margin:8px 0 4px;padding:4px 8px;font-weight:700;font-size:14px;background:rgba(0,0,0,.05);border-radius:8px;cursor:pointer;user-select:none}

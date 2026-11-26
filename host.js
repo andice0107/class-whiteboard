@@ -73,7 +73,7 @@
       var str = autoSig(); if (str == null || str === autoLast) return;
       var pid = S.myPid, nm = S.projName, n = S.pages.length; autoBusy = true;
       cloud.set('wb-proj-' + pid + '.json', JSON.parse(str)).then(function () {
-        return listPatch(function (l) { l[pid] = { name: nm || '未命名', at: Date.now(), n: n }; });
+        return listPatch(function (l) { var oc = l[pid] && l[pid].cat; l[pid] = { name: nm || '未命名', at: Date.now(), n: n }; if (oc) l[pid].cat = oc; });
       }).then(function () { autoLast = str; autoBusy = false; toast('☁️ 已自動存到雲端專案「' + (nm || '未命名') + '」', true); })
         .catch(function (e) { autoBusy = false; var nl = e && e.message === 'need-login', big = Date.now() - autoMsgAt > 120000; if (big) autoMsgAt = Date.now();
           if (nl) toast('⚠ Google 雲端連線過期了，專案沒有自動存到雲端', !big, true, true, '🔑 重新連線 Google', function () { drvLogin(false); });
@@ -2346,12 +2346,34 @@
     },
     remove: function (name) { return dFind(name).then(function (id) { if (id) return drvFetch(DAPI + '/' + id, { method: 'DELETE' }); }); }
   };
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  var PROJ_CATS = ['國語（含學策）', '數學（含學策）', '社會技巧', '溝通訓練', '功能性動作訓練', '生活管理', '輔助科技運用', '其他'];
+  var PROJ_RULES = [['社會技巧', /社會技巧|社技|人際|情緒|社交/], ['溝通訓練', /溝通|聽說|表達|對話/], ['功能性動作訓練', /功能性|動作|體能|肢體|精細|粗大|手眼|運動/], ['生活管理', /生活|管理|自理|作息|金錢|購物|整理|時間/], ['輔助科技運用', /輔助|科技|平板|電腦|打字|語音|鍵盤|AT\b/i], ['國語（含學策）', /國語|國文|語文|識字|注音|生字|成語|閱讀|寫字|作文/], ['數學（含學策）', /數學|算術|乘|除|分數|小數|面積|周長|角度|應用題|計算|單元/]];
+  function autoCat(name) { name = String(name || ''); for (var i = 0; i < PROJ_RULES.length; i++) if (PROJ_RULES[i][1].test(name)) return PROJ_RULES[i][0]; return '其他'; }
+  function projCat(it) { return it.cat || autoCat(it.name); }
+  function catMenu(anchor, id, it) {
+    openPop(anchor, function (p) {
+      p.appendChild(el('div', 'pop-h', '🏷 調整分類'));
+      p.appendChild(el('p', 'hint', '「' + (it.name || '未命名') + '」目前在：' + projCat(it) + (it.cat ? '（你手動指定的）' : '（依名稱自動歸類）')));
+      PROJ_CATS.forEach(function (c) {
+        p.appendChild(btn('mi' + (projCat(it) === c ? ' on' : ''), c, function () {
+          closePop(); listPatch(function (l) { if (l[id]) l[id].cat = c; }).then(function () { var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection()); toast('已移到「' + c + '」'); }).catch(cloudErr);
+        }));
+      });
+      if (it.cat) p.appendChild(btn('mi', '↺ 改回自動歸類', function () { closePop(); listPatch(function (l) { if (l[id]) delete l[id].cat; }).then(function () { var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection()); }).catch(cloudErr); }));
+    });
+  }
   function listGet() { return cloud.get('wb-list.json').then(function (v) { return v || {}; }); }
   function listPatch(fn) { return listGet().then(function (v) { fn(v); return cloud.set('wb-list.json', v); }); }
   drv.ready = true; setTimeout(drvStateChanged, 0);
   function myProjectsSection() {
     var sec = el('div', 'cloud-box my-proj');
-    sec.appendChild(el('div', 'pop-h', '☁️ 我的專案（存在你自己的 Google 雲端硬碟，每台電腦都看得到）'));
+    var fold0 = lsGet('wb-myproj-fold') === '1';
+    var hdp = el('div', 'pop-h fold-h', (fold0 ? '▸ ' : '▾ ') + '☁️ 我的專案（存在你自己的 Google 雲端硬碟，每台電腦都看得到）'); hdp.title = '按一下收合／展開';
+    hdp.onclick = function () { lsSet('wb-myproj-fold', fold0 ? '0' : '1'); var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection()); };
+    sec.appendChild(hdp);
+    if (fold0) return sec;
     if (!fbUser) {
       var had = ''; try { had = localStorage.getItem('wb-gwho') || ''; } catch (e) {}
       sec.appendChild(btn('btn primary g-login', '<b>G</b> ' + (had ? '重新連線 Google 雲端' : '用 Google 帳號登入'), function () { drvLogin(false); }));
@@ -2370,14 +2392,26 @@
       var ids = Object.keys(v).sort(function (a, b) { return (v[b].at || 0) - (v[a].at || 0); });
       list.innerHTML = '';
       if (!ids.length) { list.appendChild(el('p', 'hint', '還沒有存過專案。')); return; }
-      ids.forEach(function (id) {
-        var it = v[id], row = el('div', 'my-item' + (id === S.myPid ? ' on' : ''));
-        row.appendChild(el('b', '', esc(it.name || '未命名')));
-        row.appendChild(el('span', 'hint', (it.n || 0) + ' 頁・' + new Date(it.at || 0).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })));
-        row.appendChild(el('span', 'grow'));
-        row.appendChild(btn('btn sm', '開啟', function () { confirmBox('要開啟「' + esc(it.name || '未命名') + '」嗎？目前的畫板頁面會被取代。', '開啟', function () { myOpen(id); }); }));
-        row.appendChild(btn('btn sm ghost del', '🗑', function () { confirmBox('要刪除雲端上的「' + esc(it.name || '未命名') + '」嗎？刪掉就救不回來。', '刪除', function () { cloud.remove('wb-proj-' + id + '.json').then(function () { return listPatch(function (l) { delete l[id]; }); }).then(function () { if (S.myPid === id) { S.myPid = null; save(); } toast('已刪除'); $('b-proj').click(); }).catch(cloudErr); }); }));
-        list.appendChild(row);
+      var gf = {}; try { gf = JSON.parse(lsGet('wb-myproj-gfold') || '{}') || {}; } catch (e) {}
+      var groups = {};
+      ids.forEach(function (id) { var c = projCat(v[id]); (groups[c] = groups[c] || []).push(id); });
+      PROJ_CATS.concat(Object.keys(groups).filter(function (c) { return PROJ_CATS.indexOf(c) < 0; })).forEach(function (cat) {
+        var gi = groups[cat]; if (!gi) return;
+        var closed = !!gf[cat], gh = el('div', 'proj-grp-h', (closed ? '▸ ' : '▾ ') + cat + '（' + gi.length + '）');
+        gh.onclick = function () { gf[cat] = !closed; lsSet('wb-myproj-gfold', JSON.stringify(gf)); var pb = document.querySelector('.my-proj'); if (pb) pb.replaceWith(myProjectsSection()); };
+        list.appendChild(gh);
+        if (closed) return;
+        gi.forEach(function (id) {
+          var it = v[id], row = el('div', 'my-item' + (id === S.myPid ? ' on' : ''));
+          row.appendChild(el('b', '', esc(it.name || '未命名')));
+          row.appendChild(el('span', 'hint', (it.n || 0) + ' 頁・' + new Date(it.at || 0).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })));
+          row.appendChild(el('span', 'grow'));
+          var cb = btn('btn sm ghost', '🏷', function () { catMenu(cb, id, it); }); cb.title = '調整分類（目前：' + cat + (it.cat ? '，手動指定' : '，自動歸類') + '）';
+          row.appendChild(cb);
+          row.appendChild(btn('btn sm', '開啟', function () { confirmBox('要開啟「' + esc(it.name || '未命名') + '」嗎？目前的畫板頁面會被取代。', '開啟', function () { myOpen(id); }); }));
+          row.appendChild(btn('btn sm ghost del', '🗑', function () { confirmBox('要刪除雲端上的「' + esc(it.name || '未命名') + '」嗎？刪掉就救不回來。', '刪除', function () { cloud.remove('wb-proj-' + id + '.json').then(function () { return listPatch(function (l) { delete l[id]; }); }).then(function () { if (S.myPid === id) { S.myPid = null; save(); } toast('已刪除'); $('b-proj').click(); }).catch(cloudErr); }); }));
+          list.appendChild(row);
+        });
       });
     }).catch(function (e) { list.innerHTML = ''; list.appendChild(el('p', 'hint', e && e.message === 'need-login' ? '連線過期了，請按上面的「重新連線 Google 雲端」。' : '讀不到專案清單，請檢查網路。')); });
     return sec;
@@ -2390,7 +2424,7 @@
     var pid = (!asNew && S.myPid) || WB.uid(), d = projectData(); var str0 = JSON.stringify(d);
     toast('☁️ 正在存到我的專案…', true);
     cloud.set('wb-proj-' + pid + '.json', JSON.parse(JSON.stringify(d))).then(function () {
-      return listPatch(function (l) { l[pid] = { name: S.projName, at: Date.now(), n: S.pages.length }; });
+      return listPatch(function (l) { var oc = l[pid] && l[pid].cat; l[pid] = { name: S.projName, at: Date.now(), n: S.pages.length }; if (oc) l[pid].cat = oc; });
     }).then(function () { S.myPid = pid; autoLast = str0; save(); toast('☁️ 已存到我的專案「' + S.projName + '」', true); $('b-proj').click(); })
       .catch(cloudErr);
   }
