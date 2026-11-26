@@ -672,3 +672,4 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .my-item .hint{white-space:nowrap;flex:none}
 .my-item b{min-width:0;flex:1 1 auto}
 .tts-bar{touch-action:none;cursor:grab}.tts-bar button{cursor:pointer}.tts-bar .tts-grip{color:#8a97b8;font-size:18px;line-height:1;padding:0 2px}
+.tts-bar .tts-go{max-width:150px;font-size:13px;padding:3px 4px;border-radius:8px;border:1px solid #c5cde6}
