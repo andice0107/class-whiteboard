@@ -1273,7 +1273,7 @@
       b = el('div', 'tts-bar'); b.id = 'tts-bar'; document.body.appendChild(b);
       b.addEventListener('pointerdown', function (e) {
         e.stopPropagation();
-        if (e.target.closest && e.target.closest('button,input')) return;
+        if (e.target.closest && e.target.closest('button,input,select')) return;
         var r = b.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
         b.style.transform = 'none'; b.style.bottom = 'auto'; b.style.left = r.left + 'px'; b.style.top = r.top + 'px';
         function mv(ev) { var x = Math.max(0, Math.min(innerWidth - 60, ev.clientX - dx)), y = Math.max(0, Math.min(innerHeight - 40, ev.clientY - dy)); b.style.left = x + 'px'; b.style.top = y + 'px'; ev.preventDefault(); }
@@ -1286,21 +1286,23 @@
     b.hidden = !show; if (!show) return;
     if (b.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;   /* 正在選第幾句時不重畫，免得選單被關掉 */
     b.innerHTML = '';
-    var grip = el('span', 'tts-grip', '⠿'); grip.title = '按住這裡（或空白處）可以拖動唸讀條'; b.appendChild(grip);
-    b.appendChild(el('span', 'tts-st', TTS.st === 'paused' ? '⏸ 已暫停' : '🔊 唸讀中 ' + Math.min(TTS.i + 1, TTS.q.length) + '/' + TTS.q.length));
-    b.appendChild(btn('btn sm', '⏮ 上一句', function () { ttsGo(TTS.i - 1); }));
-    b.appendChild(btn('btn sm' + (TTS.st === 'paused' ? ' primary' : ''), TTS.st === 'paused' ? '▶ 繼續' : '⏸ 暫停', function () { TTS.st === 'paused' ? ttsResume() : ttsPause(); }));
-    b.appendChild(btn('btn sm', '下一句 ⏭', function () { ttsGo(TTS.i + 1); }));
+    var r1 = el('div', 'tts-r'), r2 = el('div', 'tts-r');
+    var grip = el('span', 'tts-grip', '⠿'); grip.title = '按住這裡（或空白處）可以拖動唸讀條'; r1.appendChild(grip);
+    r1.appendChild(el('span', 'tts-st', TTS.st === 'paused' ? '⏸ 已暫停' : '🔊 唸讀中 ' + Math.min(TTS.i + 1, TTS.q.length) + '/' + TTS.q.length));
+    r1.appendChild(btn('btn sm', '⏮ 上一句', function () { ttsGo(TTS.i - 1); }));
+    r1.appendChild(btn('btn sm' + (TTS.st === 'paused' ? ' primary' : ''), TTS.st === 'paused' ? '▶ 繼續' : '⏸ 暫停', function () { TTS.st === 'paused' ? ttsResume() : ttsPause(); }));
+    r1.appendChild(btn('btn sm', '下一句 ⏭', function () { ttsGo(TTS.i + 1); }));
+    r1.appendChild(btn('btn sm', '↻ 重讀', ttsReplay));
+    r1.appendChild(btn('btn sm', '⏹ 停止', ttsStop));
     var gsel = el('select', 'tts-go'); gsel.title = '選要從第幾句開始唸';
-    TTS.q.forEach(function (c, k) { var op = el('option', '', (k + 1) + '. ' + (c.length > 10 ? c.slice(0, 10) + '…' : c)); op.value = k; if (k === TTS.i) op.selected = true; gsel.appendChild(op); });
+    TTS.q.forEach(function (c, k) { var op = el('option', '', (k + 1) + '. ' + (c.length > 16 ? c.slice(0, 16) + '…' : c)); op.value = k; if (k === TTS.i) op.selected = true; gsel.appendChild(op); });
     gsel.onchange = function () { var k = +gsel.value; gsel.blur(); ttsGo(k); };
-    b.appendChild(gsel);
-    b.appendChild(btn('btn sm', '↻ 重讀', ttsReplay));
-    b.appendChild(btn('btn sm', '⏹ 停止', ttsStop));
-    b.appendChild(el('span', 'tts-st', '速度'));
-    b.appendChild(btn('btn sm', '－', function () { ttsSetRate(TTS.rate - 0.1); }));
-    b.appendChild(el('b', 'tts-rate', TTS.rate.toFixed(2).replace(/0$/, '') + '×'));
-    b.appendChild(btn('btn sm', '＋', function () { ttsSetRate(TTS.rate + 0.1); }));
+    r2.appendChild(gsel);
+    r2.appendChild(el('span', 'tts-st', '速度'));
+    r2.appendChild(btn('btn sm', '－', function () { ttsSetRate(TTS.rate - 0.1); }));
+    r2.appendChild(el('b', 'tts-rate', TTS.rate.toFixed(2).replace(/0$/, '') + '×'));
+    r2.appendChild(btn('btn sm', '＋', function () { ttsSetRate(TTS.rate + 0.1); }));
+    b.appendChild(r1); b.appendChild(r2);
   }
   /* 編輯中反白文字：打開唸讀時，只唸反白的部分 */
   document.addEventListener('pointerup', function () {
