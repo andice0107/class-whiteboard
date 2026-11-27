@@ -179,19 +179,19 @@ window.WB = (function () {
             ctx.drawImage(im, cr[0] * nw, cr[1] * nh, nw * (1 - cr[0] - cr[2]), nh * (1 - cr[1] - cr[3]), -o.w / 2, -o.h / 2, o.w, o.h);
             if (rd > 0) ctx.restore();
             if (o.bd) { try { ctx.filter = 'none'; } catch (x) {} var bw = o.bw || 4; ctx.lineWidth = bw; ctx.strokeStyle = o.bd; if (rd > 0) { ctx.stroke(); } else ctx.strokeRect(-o.w / 2 + bw / 2, -o.h / 2 + bw / 2, o.w - bw, o.h - bw); } } else { ctx.fillStyle = '#eef1f7'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); } }
-    else if (o.k === 'g') { drawShape(ctx, o); if (o.txt) { var gfs = o.fs || 32; ctx.globalAlpha = 1; ctx.fillStyle = o.tc || '#111'; ctx.font = gfs + 'px ' + ffs(o) + '"PingFang TC","Noto Sans TC",sans-serif'; ctx.textBaseline = 'middle'; var gl = String(o.txt).split('\n'); gl.forEach(function (l, i) { var gal = lineAl(o, i, o.al || 'center'); ctx.textAlign = gal; var gx = gal === 'center' ? 0 : gal === 'right' ? o.w / 2 - 8 : -o.w / 2 + 8; ctx.fillText(l, gx, (i - (gl.length - 1) / 2) * gfs * 1.3, o.w - 12); }); } }
+    else if (o.k === 'g') { drawShape(ctx, o); if (o.txt) { var gfs = o.fs || 32; ctx.globalAlpha = 1; ctx.fillStyle = o.tc || '#111'; ctx.font = gfs + 'px ' + ffs(o) + '"PingFang TC","Noto Sans TC",sans-serif'; ctx.textBaseline = 'middle'; var gl = String(o.txt).split('\n'); gl.forEach(function (l, i) { var gal = lineAl(o, i, o.al || 'center'); ctx.textAlign = gal; var gx = gal === 'center' ? 0 : gal === 'right' ? o.w / 2 - 8 : -o.w / 2 + 8; ctx.fillText(l, gx, (i - (gl.length - 1) / 2) * gfs * (o.lh || 1.3), o.w - 12); }); } }
     else if (o.k === 'v') { ctx.fillStyle = '#111'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); ctx.fillStyle = '#e53935'; var r0 = Math.min(o.w, o.h) * 0.14; ctx.beginPath(); ctx.moveTo(-r0 * 0.7, -r0); ctx.lineTo(r0 * 1.1, 0); ctx.lineTo(-r0 * 0.7, r0); ctx.closePath(); ctx.fill(); }
     else if (o.k === 'n') {
       ctx.fillStyle = o.c || '#fff3a6'; ctx.shadowColor = 'rgba(0,0,0,.18)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); ctx.shadowColor = 'transparent';
       var nfs = o.fs || 28; ctx.fillStyle = '#333'; ctx.font = nfs + 'px ' + ffs(o) + '"PingFang TC","Noto Sans TC",sans-serif'; ctx.textBaseline = 'top';
-      String(o.txt || '').split('\n').forEach(function (l, i) { var nal = lineAl(o, i, o.al || 'left'); ctx.textAlign = nal; var nx = nal === 'center' ? 0 : nal === 'right' ? o.w / 2 - 12 : -o.w / 2 + 12; ctx.fillText(l, nx, -o.h / 2 + 12 + i * nfs * 1.35, o.w - 24); });
+      String(o.txt || '').split('\n').forEach(function (l, i) { var nal = lineAl(o, i, o.al || 'left'); ctx.textAlign = nal; var nx = nal === 'center' ? 0 : nal === 'right' ? o.w / 2 - 12 : -o.w / 2 + 12; ctx.fillText(l, nx, -o.h / 2 + 12 + i * nfs * (o.lh || 1.35), o.w - 24); });
     }
     else if (o.k === 't') {
       if (o.bd) { ctx.strokeStyle = o.bd; ctx.lineWidth = o.bw || 3; ctx.strokeRect(-o.w / 2, -o.h / 2, o.w, o.h); }
       var fs = o.fs || 36; ctx.fillStyle = o.c || '#111'; ctx.font = fs + 'px ' + ffs(o) + '"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline = 'top';
       var lines = String(o.txt || '').split('\n');
-      if (!o.v) { lines.forEach(function (l, i) { var tal = lineAl(o, i, o.al || 'left'); ctx.textAlign = tal; var tx = tal === 'center' ? 0 : tal === 'right' ? o.w / 2 - 8 : -o.w / 2 + 8; ctx.fillText(l, tx, -o.h / 2 + 6 + i * fs * 1.35, o.w - 16); }); }
-      else lines.forEach(function (l, i) { var x = o.w / 2 - 8 - (i + 1) * fs * 1.35; Array.from(l).forEach(function (ch, j) { ctx.fillText(ch, x, -o.h / 2 + 6 + j * fs * 1.1); }); });
+      if (!o.v) { lines.forEach(function (l, i) { var tal = lineAl(o, i, o.al || 'left'); ctx.textAlign = tal; var tx = tal === 'center' ? 0 : tal === 'right' ? o.w / 2 - 8 : -o.w / 2 + 8; ctx.fillText(l, tx, -o.h / 2 + 6 + i * fs * (o.lh || 1.35), o.w - 16); }); }
+      else lines.forEach(function (l, i) { var x = o.w / 2 - 8 - (i + 1) * fs * (o.lh || 1.35); Array.from(l).forEach(function (ch, j) { ctx.fillText(ch, x, -o.h / 2 + 6 + j * fs * 1.1); }); });
     }
     ctx.restore();
   }
@@ -362,7 +362,7 @@ window.WB = (function () {
           if (o.k === 't') e.style.border = o.bd ? (o.bw || 3) + 'px solid ' + o.bd : '';
           if (o.k === 'g') t.style.color = o.tc || '#111'; else
           if (o.k === 'n') { e.style.background = o.c || '#fff3a6'; t.style.color = '#333'; } else t.style.color = o.c || '#111';
-          t.classList.toggle('vert', !!o.v); t.style.fontFamily = ffam(o.ff); if (o.ff) ensureFont(o.ff);
+          t.classList.toggle('vert', !!o.v); t.style.fontFamily = ffam(o.ff); if (o.ff) ensureFont(o.ff); t.style.lineHeight = o.lh > 0 ? String(o.lh) : '';
           var al = o.al || (o.k === 'g' ? 'center' : 'left'); t.style.textAlign = al; if (o.k === 'g') t.style.justifyContent = al === 'left' ? 'flex-start' : al === 'right' ? 'flex-end' : 'center';
           if (editing !== o.id) { var h = ((o.als || o.rt) && !o.v && o.txt ? lineHtml(o) : linkify(o.txt)) || (o.k === 'g' ? '' : '<span class="ph">' + (o.k === 'n' ? '（點兩下寫字）' : '（點兩下輸入文字）') + '</span>'); if (t._h !== h) { t.innerHTML = h; t._h = h; } }
         }

@@ -940,6 +940,13 @@
         var fl0 = el('div', 'fl-list'); m.appendChild(fl0);
         fontListUI(fl0, o.ff || '', function (fv) { if (!fv) return chg({ ff: '' }); fontEnsure(fv, function (ok) { if (ok) chg({ ff: fv }); }); });
       }
+      if (o.k === 't' || o.k === 'n' || (o.k === 'g' && o.shape !== 'zycell')) {
+        var lr = row(), lh0 = o.lh || 1.35; lr.appendChild(el('span', '', '行距'));
+        lr.appendChild(btn('btn sm', '－ 窄一點', function () { chg({ lh: Math.max(0.8, Math.round((lh0 - 0.1) * 10) / 10) }); }));
+        lr.appendChild(el('b', '', lh0.toFixed(1) + ' 倍'));
+        lr.appendChild(btn('btn sm', '＋ 寬一點', function () { chg({ lh: Math.min(4, Math.round((lh0 + 0.1) * 10) / 10) }); }));
+        if (o.lh) lr.appendChild(btn('btn sm', '↺ 預設', function () { chg({ lh: 0 }); }));
+      }
       function alignRow(def) {
         var cur = o.al || def, ar = row(); ar.appendChild(el('span', '', '文字對齊'));
         [['left', '⬅ 靠左'], ['center', '↔ 置中'], ['right', '➡ 靠右']].forEach(function (z) { ar.appendChild(btn('btn sm' + (cur === z[0] ? ' primary' : ''), z[1], function () { chg({ al: z[0], als: null }); })); });
