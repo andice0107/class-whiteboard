@@ -701,3 +701,8 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .fontlib .modal-btns{flex-wrap:wrap;justify-content:flex-end;gap:8px}
 .fontlib .pron-row .fl-s{order:5;flex:1 0 100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fontlib .pron-row .btn{flex:none}
+.pop.objmenu{min-width:420px;max-width:min(560px,calc(100vw - 16px))}
+.pop.objmenu .fl-list{max-height:none;overflow:visible;flex:none}
+.pop.objmenu .fl-item{flex:none}
+.fl-item .fl-s{font-size:20px}
+.pop.objmenu .fl-list{max-height:340px;overflow:auto}
