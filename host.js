@@ -434,8 +434,10 @@
   /* ---------- 工具列 ---------- */
   function setMode(m) { tool.mode = m; V.setTool(tool); renderTools(); }
   var pop = null;
-  function closePop() { if (pop) { pop.remove(); pop = null; } }
-  document.addEventListener('pointerdown', function (e) { if (pop && !pop.contains(e.target) && !e.target.closest('[data-pop]')) closePop(); }, true);
+  var fontWin = null;
+  function closeFontWin() { if (fontWin) { fontWin.remove(); fontWin = null; } }
+  function closePop() { closeFontWin(); if (pop) { pop.remove(); pop = null; } }
+  document.addEventListener('pointerdown', function (e) { if (pop && !(e.target.closest && e.target.closest('.fl-win')) && !pop.contains(e.target) && !e.target.closest('[data-pop]')) closePop(); }, true);
   function openPop(anchor, build) {
     var wasHov = pop && pop.classList.contains('hov') ? pop._hk : null;
     if (anchor && !anchor.isConnected && anchor.dataset && anchor.dataset.tk) anchor = tbAnchor(anchor.dataset.tk) || anchor;
@@ -935,11 +937,11 @@
         var fr = row(); fr.appendChild(el('span', '', '字型'));
         var fcur = (S.fonts || []).filter(function (f) { return f.id === o.ff; })[0];
         fr.appendChild(el('b', '', esc(fcur ? fcur.name : '預設字型')));
-        fr.appendChild(btn('btn sm', '⬆ 上傳字型', function () { fontUpload(function (f) { if (f) chg({ ff: f.id }); }); }));
+        fr.appendChild(btn('btn sm primary', '選字型 ▸', function () {
+          openFontWin(m, o.ff || '', function (fv) { if (!fv) return chg({ ff: '' }); fontEnsure(fv, function (ok) { if (ok) chg({ ff: fv }); }); });
+        }));
+        fr.appendChild(btn('btn sm', '⬆ 上傳', function () { fontUpload(function (f) { if (f) chg({ ff: f.id }); }); }));
         fr.appendChild(btn('btn sm', '🔤 字型庫', function () { closePop(); fontLibModal(); }));
-        m.appendChild(el('div', 'pop-l', '整個框的字型（下面每個字型都有範字，點一下就套用）。只想改幾個字：點兩下進入編輯、反白後在工具列選字型。'));
-        var fl0 = el('div', 'fl-list'); m.appendChild(fl0);
-        fontListUI(fl0, o.ff || '', function (fv) { if (!fv) return chg({ ff: '' }); fontEnsure(fv, function (ok) { if (ok) chg({ ff: fv }); }); });
       }
       if (o.k === 't' || o.k === 'n' || (o.k === 'g' && o.shape !== 'zycell')) {
         var lr = row(), lh0 = o.lh || 1.35; lr.appendChild(el('span', '', '行距'));
@@ -1630,6 +1632,21 @@
       }));
       box.appendChild(prog); box.appendChild(mb);
     });
+  }
+  /* 右鍵選單裡的「選字型」：另開一個小視窗（可關閉），一次看得到 5 個以上的字型和範字 */
+  function openFontWin(menuEl, cur, pick) {
+    closeFontWin();
+    var w = el('div', 'fl-win'), hd = el('div', 'fl-win-h'); fontWin = w;
+    hd.appendChild(el('b', '', '🔤 選字型（點一下就套用）')); hd.appendChild(el('span', 'grow'));
+    hd.appendChild(btn('btn sm', '✕ 關閉', closeFontWin)); w.appendChild(hd);
+    var list = el('div', 'fl-list'); w.appendChild(list);
+    fontListUI(list, cur, function (id) { closeFontWin(); pick(id); });
+    w.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    document.body.appendChild(w);
+    var r = menuEl.getBoundingClientRect(), ww = w.offsetWidth, wh = w.offsetHeight;
+    var left = r.right + 8 + ww <= innerWidth - 6 ? r.right + 8 : Math.max(6, r.left - ww - 8);
+    if (left < 6 || left + ww > innerWidth - 6) left = Math.max(6, Math.min(innerWidth - ww - 6, r.left + 20));
+    w.style.left = left + 'px'; w.style.top = Math.max(6, Math.min(innerHeight - wh - 6, r.top)) + 'px';
   }
   var FONT_SAMPLE = '國語學習 ㄅㄆㄇㄈ ABC 123';
   function fontListUI(box, cur, pick) {
