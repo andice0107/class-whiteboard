@@ -1415,7 +1415,7 @@
     function fin(v) { if (done) return; done = true; cb(v); }
     inp.onchange = function () {
       var f = inp.files && inp.files[0]; if (!f) return fin(null);
-      if (f.size > 14 * 1048576) { toast('這個字型檔太大了（' + (f.size / 1048576).toFixed(1) + ' MB），請用 14 MB 以下的檔案'); return fin(null); }
+      if (f.size > 15 * 1048576) toast('字型檔很大（' + (f.size / 1048576).toFixed(0) + ' MB），讀取需要幾秒，傳給學生也會比較久', true);
       var fr = new FileReader();
       fr.onload = function () {
         var id = 'fn' + WB.uid(), name = f.name.replace(/\.[^.]+$/, ''), d = String(fr.result);
