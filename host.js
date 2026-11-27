@@ -343,6 +343,7 @@
     fonts: function () { return S.fonts || []; },
     uploadFont: function (cb) { fontUpload(cb); },
     ensureFont: function (id, cb) { fontEnsure(id, cb); },
+    fontList: function (box, cur, pick) { fontListUI(box, cur, pick); },
     onContext: function (o, x, y) { if (S.mode === 'show') return; objMenu(o, x, y); },
     onWantSelect: function () { setMode('select'); },
     onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
@@ -915,14 +916,13 @@
       }
       if (o.k === 't' || o.k === 'n' || (o.k === 'g' && o.shape !== 'zycell')) {
         var fr = row(); fr.appendChild(el('span', '', '字型'));
-        var fs0 = el('select', 'font-sel'), op0 = el('option', '', '（預設字型）'); op0.value = ''; fs0.appendChild(op0);
-        (S.fonts || []).forEach(function (f) { var op = el('option', '', f.name); op.value = f.id; fs0.appendChild(op); });
-        fs0.value = o.ff || '';
-        fs0.onchange = function () { var fv = fs0.value || ''; if (!fv) return chg({ ff: '' }); fontEnsure(fv, function (ok) { if (ok) chg({ ff: fv }); }); };
-        fr.appendChild(fs0);
+        var fcur = (S.fonts || []).filter(function (f) { return f.id === o.ff; })[0];
+        fr.appendChild(el('b', '', esc(fcur ? fcur.name : '預設字型')));
         fr.appendChild(btn('btn sm', '⬆ 上傳字型', function () { fontUpload(function (f) { if (f) chg({ ff: f.id }); }); }));
         fr.appendChild(btn('btn sm', '🔤 字型庫', function () { closePop(); fontLibModal(); }));
-        m.appendChild(el('div', 'pop-l', '整個框的字型。只想改幾個字：點兩下進入編輯、反白後在工具列選字型。'));
+        m.appendChild(el('div', 'pop-l', '整個框的字型（下面每個字型都有範字，點一下就套用）。只想改幾個字：點兩下進入編輯、反白後在工具列選字型。'));
+        var fl0 = el('div', 'fl-list'); m.appendChild(fl0);
+        fontListUI(fl0, o.ff || '', function (fv) { if (!fv) return chg({ ff: '' }); fontEnsure(fv, function (ok) { if (ok) chg({ ff: fv }); }); });
       }
       function alignRow(def) {
         var cur = o.al || def, ar = row(); ar.appendChild(el('span', '', '文字對齊'));
@@ -1413,23 +1413,74 @@
     });
   }
   /* ---------- 上傳字型：字型檔存在老師端，用到的字型會像圖片一樣傳給學生 ---------- */
+  /* 讀字型檔裡的名稱（優先中文名）。TTC（字型集合檔）瀏覽器不能直接用，這裡把裡面每一個字型拆成獨立字型 */
+  function sfntNames(ab, off) {
+    var dv = new DataView(ab), out = {};
+    try {
+      var nt = dv.getUint16(off + 4);
+      for (var i = 0; i < nt; i++) {
+        var r = off + 12 + i * 16;
+        if (String.fromCharCode(dv.getUint8(r), dv.getUint8(r + 1), dv.getUint8(r + 2), dv.getUint8(r + 3)) === 'name') {
+          var to = dv.getUint32(r + 8), cnt = dv.getUint16(to + 2), so = to + dv.getUint16(to + 4);
+          for (var k = 0; k < cnt; k++) {
+            var q = to + 6 + k * 12, pid = dv.getUint16(q), lid = dv.getUint16(q + 4), nid = dv.getUint16(q + 6), len = dv.getUint16(q + 8), no = dv.getUint16(q + 10);
+            if (pid !== 3 || (nid !== 1 && nid !== 4 && nid !== 16)) continue;
+            var str = ''; for (var c = 0; c < len; c += 2) str += String.fromCharCode(dv.getUint16(so + no + c));
+            var zh = lid === 0x0404 || lid === 0x0c04 || lid === 0x1004 || lid === 0x0804;
+            out[(zh ? 'z' : 'e') + nid + (zh && lid !== 0x0404 ? 'x' : '')] = str;
+          }
+          break;
+        }
+      }
+    } catch (e) {}
+    return out;
+  }
+  function pickFontName(nm) { return nm.z4 || nm.z16 || nm.z1 || nm.z4x || nm.z16x || nm.z1x || nm.e4 || nm.e16 || nm.e1 || ''; }
+  function ttcSplit(ab) {
+    var dv = new DataView(ab), n = dv.getUint32(8), outs = [];
+    for (var f = 0; f < n; f++) {
+      var off = dv.getUint32(12 + f * 4), nt = dv.getUint16(off + 4), hl = 12 + nt * 16, tabs = [], total = hl;
+      for (var i = 0; i < nt; i++) { var r = off + 12 + i * 16, len = dv.getUint32(r + 12); tabs.push({ r: r, o: dv.getUint32(r + 8), l: len, np: total }); total += (len + 3) & ~3; }
+      var buf = new Uint8Array(total), src = new Uint8Array(ab), nd = new DataView(buf.buffer);
+      buf.set(src.subarray(off, off + hl), 0);
+      tabs.forEach(function (t, i) { buf.set(src.subarray(t.o, t.o + t.l), t.np); nd.setUint32(12 + i * 16 + 8, t.np); });
+      outs.push(buf.buffer);
+    }
+    return outs;
+  }
+  function readAs(f, how) { return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.onerror = function () { rej(fr.error); }; fr[how](f); }); }
+  /* 把一個字型檔（可能含多個字型）加進字型庫，回傳新增的字型清單 */
+  function fontIngest(f) {
+    var base = f.name.replace(/\.[^.]+$/, '');
+    return readAs(f, 'readAsArrayBuffer').then(function (ab) {
+      var u = new Uint8Array(ab, 0, 4), isTtc = String.fromCharCode(u[0], u[1], u[2], u[3]) === 'ttcf', woff = /^wOF/.test(String.fromCharCode(u[0], u[1], u[2]));
+      var bufs = isTtc ? ttcSplit(ab) : [ab], made = [], seq = Promise.resolve();
+      bufs.forEach(function (bf, i) {
+        seq = seq.then(function () {
+          var nm = woff ? '' : pickFontName(sfntNames(bf, 0)), name = nm || (bufs.length > 1 ? base + '-' + (i + 1) : base);
+          return readAs(new Blob([bf]), 'readAsDataURL').then(function (d) {
+            var id = 'fn' + WB.uid();
+            return new FontFace('wbf-' + id, 'url(' + d + ')').load().then(function () {
+              WB.setImg(id, d); idbPut('i', id, d); S.fonts = S.fonts || []; var ent = { id: id, name: name, file: base, size: bf.byteLength }; S.fonts.push(ent); save(); made.push(ent);
+              return fbUser ? fontCloudPut(ent) : null;
+            }).catch(function () {});
+          });
+        });
+      });
+      return seq.then(function () { return made; });
+    });
+  }
   function fontUpload(cb) {
-    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.ttf,.otf,.woff,.woff2,font/*'; var done = false;
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.ttf,.otf,.ttc,.woff,.woff2,font/*'; var done = false;
     function fin(v) { if (done) return; done = true; cb(v); }
     inp.onchange = function () {
       var f = inp.files && inp.files[0]; if (!f) return fin(null);
       if (f.size > 15 * 1048576) toast('字型檔很大（' + (f.size / 1048576).toFixed(0) + ' MB），讀取需要幾秒，傳給學生也會比較久', true);
-      var fr = new FileReader();
-      fr.onload = function () {
-        var id = 'fn' + WB.uid(), name = f.name.replace(/\.[^.]+$/, ''), d = String(fr.result);
-        var test = new FontFace('wbf-' + id, 'url(' + d + ')');
-        test.load().then(function () {
-          WB.setImg(id, d); idbPut('i', id, d); S.fonts = S.fonts || []; var ent = { id: id, name: name, size: f.size }; S.fonts.push(ent); save();
-          toast('✅ 已加入字型「' + name + '」' + (fbUser ? '，正在同步到雲端字型庫…' : '（沒登入 Google，只存在這台電腦）')); fin(ent);
-          if (fbUser) fontCloudPut(ent);
-        }).catch(function () { toast('這個字型檔讀不出來，請確認是 .ttf .otf .woff 或 .woff2'); fin(null); });
-      };
-      fr.onerror = function () { fin(null); }; fr.readAsDataURL(f);
+      fontIngest(f).then(function (made) {
+        if (!made.length) { toast('這個字型檔讀不出來，請確認是 .ttf .otf .ttc .woff 或 .woff2'); return fin(null); }
+        toast('✅ 已加入字型「' + made.map(function (m) { return m.name; }).join('、') + '」' + (fbUser ? '（同步到雲端字型庫中）' : '（沒登入 Google，只存在這台電腦）'));
+        fin(made[0]);
+      }).catch(function () { toast('這個字型檔讀不出來'); fin(null); });
     };
     inp.addEventListener('cancel', function () { fin(null); });
     inp.click();
@@ -1442,7 +1493,7 @@
     var d = WB.imgs[ent.id]; if (!d || !fbUser) return Promise.resolve();
     var n = Math.ceil(d.length / FCH), seq = Promise.resolve();
     for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return cloud.set('wb-font-' + ent.id + '-' + i + '.json', { d: d.slice(i * FCH, (i + 1) * FCH) }); }); })(i);
-    return seq.then(function () { return fontIndexPatch(function (f) { f[ent.id] = { name: ent.name, size: ent.size || Math.round(d.length * 0.75), n: n }; }); })
+    return seq.then(function () { return fontIndexPatch(function (f) { f[ent.id] = { name: ent.name, file: ent.file, size: ent.size || Math.round(d.length * 0.75), n: n }; }); })
       .then(function () { ent.cloud = true; save(); toast('☁️ 字型「' + ent.name + '」已存進雲端字型庫', true); if (fontLibOpen()) fontLibModal(true); })
       .catch(function (e) { cloudErr(e); });
   }
@@ -1470,7 +1521,7 @@
       Object.keys(fl).forEach(function (id) {
         if (tomb[id]) { fontCloudRemove(id, fl[id].n || 1); return; }   /* 你刪過的字型：不再加回來，並補刪雲端殘留 */
         var e = S.fonts.filter(function (f) { return f.id === id; })[0];
-        if (!e) { S.fonts.push({ id: id, name: fl[id].name, size: fl[id].size, cloud: true }); ch = true; } else if (!e.cloud) { e.cloud = true; ch = true; }
+        if (!e) { S.fonts.push({ id: id, name: fl[id].name, file: fl[id].file, size: fl[id].size, cloud: true }); ch = true; } else if (!e.cloud) { e.cloud = true; ch = true; }
       });
       S.fonts.forEach(function (e) { if (e.cloud && !fl[e.id]) { e.cloud = false; ch = true; } });
       if (ch) save(); cb && cb();
@@ -1502,6 +1553,81 @@
       } else done && done();
     });
   }
+  /* 批次匯入：選一個放字型的資料夾，依關鍵字勾選，已在字型庫（同名）的自動跳過 */
+  var fontBatchInp = null;
+  var FB_KEYS = '標楷, 文鼎, 書法, 字嗨, Zihi';
+  function fontBatchPick() {
+    var inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.setAttribute('webkitdirectory', ''); inp.setAttribute('directory', '');
+    fontBatchInp = inp;   /* 留著這個選檔元素，避免檔案參照被瀏覽器回收 */
+    inp.onchange = function () {
+      var all = Array.prototype.slice.call(inp.files || []).filter(function (f) { return /\.(ttf|otf|ttc|woff2?)$/i.test(f.name); });
+      if (!all.length) return toast('這個資料夾裡沒有找到字型檔（.ttf .otf .ttc .woff）');
+      fontBatchModal(all);
+    };
+    inp.click();
+  }
+  function fontBatchModal(all) {
+    var rows = [], keysIn;
+    function baseName(f) { return f.name.replace(/\.[^.]+$/, ''); }
+    function have(f) { return (S.fonts || []).some(function (x) { return x.file === baseName(f) || x.name === baseName(f); }); }
+    function keys() { return keysIn.value.split(/[,，、\s]+/).filter(Boolean).map(function (k) { return k.toLowerCase(); }); }
+    function match(f) { var p = ((f.webkitRelativePath || '') + '/' + f.name).toLowerCase(); return keys().some(function (k) { return p.indexOf(k) >= 0; }); }
+    modal(function (box) {
+      box.classList.add('fontlib');
+      box.appendChild(el('h3', '', '📁 批次匯入字型'));
+      box.appendChild(el('p', 'hint', '找到 ' + all.length + ' 個字型檔。系統依「關鍵字」自動勾選（比對資料夾名稱和檔名），同名字型已在字型庫的會跳過。可以改關鍵字，也可以手動勾選。'));
+      var kr = el('div', 'pop-row'); kr.appendChild(el('span', '', '關鍵字')); keysIn = el('input', 'num'); keysIn.style.width = '70%'; keysIn.value = FB_KEYS; kr.appendChild(keysIn); box.appendChild(kr);
+      var list = el('div', 'pron-list'); box.appendChild(list);
+      var sum = el('p', 'hint', ''); box.appendChild(sum);
+      function total() { var n = 0, sz = 0; rows.forEach(function (r) { if (r.cb.checked) { n++; sz += r.f.size; } }); sum.textContent = '已勾選 ' + n + ' 個，共 ' + (sz / 1048576).toFixed(1) + ' MB' + (fbUser ? '（會同時存進雲端字型庫，需要一些時間）' : '（沒登入 Google，只存在這台電腦）'); }
+      function draw(reset) {
+        list.innerHTML = ''; rows = [];
+        all.slice().sort(function (a, b) { return (match(b) ? 1 : 0) - (match(a) ? 1 : 0) || a.name.localeCompare(b.name); }).forEach(function (f) {
+          var dup = have(f), r = el('label', 'pron-row'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !dup && match(f); cb.disabled = dup; cb.onchange = total;
+          r.appendChild(cb); r.appendChild(el('b', '', esc(baseName(f)))); r.appendChild(el('span', 'hint', (f.size / 1048576).toFixed(1) + ' MB' + (dup ? '・已在字型庫' : '') + (/\.ttc$/i.test(f.name) ? '・TTC（會拆成裡面的每個字型）' : '')));
+          list.appendChild(r); rows.push({ f: f, cb: cb });
+        });
+        total();
+      }
+      keysIn.onchange = function () { draw(); };
+      draw();
+      var mb = el('div', 'modal-btns'), prog = el('span', 'hint', '');
+      mb.appendChild(btn('btn', '取消', closeModal));
+      mb.appendChild(btn('btn primary', '開始匯入', function () {
+        var todo = rows.filter(function (r) { return r.cb.checked; }).map(function (r) { return r.f; });
+        if (!todo.length) return toast('沒有勾選任何字型');
+        var okN = 0, bad = [], i = 0;
+        function next() {
+          if (i >= todo.length) { closeModal(); toast('✅ 匯入完成：成功 ' + okN + ' 個' + (bad.length ? '，讀不出來 ' + bad.length + ' 個（' + bad.slice(0, 5).join('、') + (bad.length > 5 ? '…' : '') + '）' : ''), true); fontLibModal(); return; }
+          var f = todo[i++]; prog.textContent = '匯入中 ' + i + '/' + todo.length + '：' + baseName(f);
+          fontIngest(f).then(function (made) { if (made.length) okN += made.length; else bad.push(baseName(f)); next(); }).catch(function () { bad.push(baseName(f)); next(); });
+        }
+        mb.querySelectorAll('button').forEach(function (b) { b.disabled = true; }); next();
+      }));
+      box.appendChild(prog); box.appendChild(mb);
+    });
+  }
+  var FONT_SAMPLE = '國語學習 ㄅㄆㄇㄈ ABC 123';
+  function fontListUI(box, cur, pick) {
+    fontFixNames();
+    [{ id: '', name: '（預設字型）' }].concat(S.fonts || []).forEach(function (it) {
+      var b = el('button', 'fl-item' + ((cur || '') === it.id ? ' on' : '')), have = !it.id || !!WB.imgs[it.id];
+      b.type = 'button'; b.appendChild(el('b', '', esc(it.name) + (have ? '' : '（雲端，點了才下載）')));
+      var sm = el('span', 'fl-s', FONT_SAMPLE); if (it.id && have) { WB.ensureFont(it.id); sm.style.fontFamily = WB.ffam(it.id); }
+      b.appendChild(sm); b.onclick = function () { pick(it.id); }; box.appendChild(b);
+    });
+  }
+  /* 舊的字型：從字型檔裡讀出中文名稱（只做一次） */
+  function fontFixNames() {
+    (S.fonts || []).forEach(function (e) {
+      if (e.nz || !WB.imgs[e.id]) return; e.nz = 1;
+      try {
+        var d = WB.imgs[e.id], b64 = d.slice(d.indexOf(',') + 1), bin = atob(b64), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+        if (String.fromCharCode(u[0], u[1], u[2]) === 'wOF') return;
+        var nm = pickFontName(sfntNames(u.buffer, 0)); if (nm && nm !== e.name) { if (!e.file) e.file = e.name; e.name = nm; }
+      } catch (er) {}
+    }); save();
+  }
   function fontLibOpen() { var m = $('modal'); return !!(m && !m.hidden && m.querySelector('.fontlib')); }
   function fontLibModal(redraw) {
     function build(box) {
@@ -1509,11 +1635,11 @@
       box.appendChild(el('h3', '', '🔤 字型庫'));
       box.appendChild(el('p', 'hint', fbUser ? '已登入 Google：上傳的字型會存在你自己的雲端硬碟，每台電腦登入後都能選。用不到的字型按 🗑 刪除，雲端的也會一起刪掉、釋放空間。' : '沒有登入 Google 時，字型只存在這台電腦的這個瀏覽器。登入後（「💾 專案」→ 我的專案）才能存進雲端字型庫、換電腦也在。'));
       var list = el('div', 'pron-list'); box.appendChild(list);
-      S.fonts = S.fonts || [];
+      S.fonts = S.fonts || []; fontFixNames();
       if (!S.fonts.length) list.appendChild(el('p', 'hint', '字型庫是空的，按下面「上傳字型」加入。'));
       S.fonts.forEach(function (f) {
         var row = el('div', 'pron-row'), have = !!WB.imgs[f.id], sz = f.size || (have ? Math.round(WB.imgs[f.id].length * 0.75) : 0);
-        row.appendChild(el('b', '', esc(f.name))); row.appendChild(el('span', 'hint', (sz ? (sz / 1048576).toFixed(1) + ' MB・' : '') + (f.cloud ? '☁️已在雲端' : '只在這台電腦') + (have ? '' : '・未下載')));
+        row.appendChild(el('b', '', esc(f.name))); if (have) { WB.ensureFont(f.id); var sp = el('span', 'fl-s', FONT_SAMPLE); sp.style.fontFamily = WB.ffam(f.id); sp.style.fontSize = '20px'; row.appendChild(sp); } row.appendChild(el('span', 'hint', (sz ? (sz / 1048576).toFixed(1) + ' MB・' : '') + (f.cloud ? '☁️已在雲端' : '只在這台電腦') + (have ? '' : '・未下載')));
         row.appendChild(el('span', 'grow'));
         if (fbUser && !f.cloud && have) row.appendChild(btn('btn sm', '☁️ 存到雲端', function () { toast('正在上傳到雲端…', true); fontCloudPut(f); }));
         row.appendChild(btn('btn sm ghost del', '🗑', function () { closeModal(); fontDelete(f, function () { fontLibModal(); }); }));
@@ -1521,6 +1647,7 @@
       });
       var mb = el('div', 'modal-btns');
       mb.appendChild(btn('btn', '⬆ 上傳字型', function () { fontUpload(function (f) { if (f) setTimeout(function () { fontLibModal(true); }, 200); }); }));
+      mb.appendChild(btn('btn', '📁 批次匯入（選資料夾）', fontBatchPick));
       mb.appendChild(btn('btn primary', '完成', closeModal)); box.appendChild(mb);
     }
     if (redraw) closeModal();

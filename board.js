@@ -888,17 +888,25 @@ window.WB = (function () {
         var hn = keep(mk('button', '', '✕ 去除底色', '把選取文字的底色拿掉')); hn.type = 'button'; hn.style.fontSize = '12px'; hn.style.padding = '0 8px'; hn.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); cmd('hiliteColor', 'transparent'); }; r3.appendChild(hn);
         bar.appendChild(r3);
         var r4 = mk('div', 'eal-r'); r4.appendChild(mk('span', 'eal-l', '字型：'));
-        var fsel = mk('select', 'eal-sel', '', '選取的文字改用這個字型');
-        function fillFonts(sel0) { fsel.innerHTML = ''; var o0 = mk('option', '', '（預設字型）'); o0.value = ''; fsel.appendChild(o0); ((opt.fonts && opt.fonts()) || []).forEach(function (f) { var op = mk('option', '', f.name); op.value = f.id; fsel.appendChild(op); }); fsel.value = sel0 || ''; }
-        fillFonts('');
-        fsel.onmousedown = function (ev) { ev.stopPropagation(); saveSel(); hold = true; };
-        fsel.onpointerdown = function (ev) { ev.stopPropagation(); };
-        fsel.onchange = function () { var fv = fsel.value; function go(ok) { hold = false; restoreSel(); if (ok) cmd('fontName', fv ? 'wbf-' + fv : 'sans-serif'); fsel.value = ''; } if (fv && opt.ensureFont) { hold = true; opt.ensureFont(fv, go); } else go(true); };
-        fsel.onblur = function () { setTimeout(function () { hold = false; }, 200); };
-        r4.appendChild(fsel);
+        var fpop = null;
+        function closeFpop() { if (fpop) { fpop.remove(); fpop = null; } }
+        var fbtn = keep(mk('button', '', '選字型 ▾', '選取的文字改用這個字型（每個字型都有範字）')); fbtn.type = 'button'; fbtn.style.fontSize = '12px'; fbtn.style.padding = '0 8px';
+        fbtn.onclick = function (ev) {
+          ev.preventDefault(); ev.stopPropagation(); if (fpop) return closeFpop();
+          fpop = mk('div', 'fl-pop'); fpop.onmousedown = function (e2) { e2.preventDefault(); e2.stopPropagation(); }; fpop.onpointerdown = function (e2) { e2.stopPropagation(); };
+          if (opt.fontList) opt.fontList(fpop, '', function (fv) {
+            function go(ok) { if (ok) { restoreSel(); cmd('fontName', fv ? 'wbf-' + fv : 'sans-serif'); } }
+            closeFpop(); if (fv && opt.ensureFont) opt.ensureFont(fv, function (ok) { hold = false; go(ok); }); else go(true);
+          });
+          document.body.appendChild(fpop);
+          var br = bar.getBoundingClientRect(), ph = fpop.offsetHeight, top = br.top - ph - 6; if (top < 6) top = br.bottom + 6;
+          fpop.style.left = Math.max(6, Math.min(innerWidth - fpop.offsetWidth - 6, br.left)) + 'px'; fpop.style.top = Math.max(6, Math.min(innerHeight - ph - 6, top)) + 'px';
+        };
+        r4.appendChild(fbtn);
+        var fclose = bar.remove.bind(bar); bar.remove = function () { closeFpop(); fclose(); };
         if (opt.uploadFont) {
           var ub = keep(mk('button', '', '⬆ 上傳字型', '上傳字型檔（.ttf .otf .woff .woff2），上傳後就能選')); ub.type = 'button'; ub.style.fontSize = '12px'; ub.style.padding = '0 8px';
-          ub.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); saveSel(); hold = true; opt.uploadFont(function (f) { hold = false; if (f) { fillFonts(f.id); restoreSel(); cmd('fontName', 'wbf-' + f.id); fsel.value = ''; } else restoreSel(); }); };
+          ub.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); saveSel(); hold = true; opt.uploadFont(function (f) { hold = false; if (f) { restoreSel(); cmd('fontName', 'wbf-' + f.id); } else restoreSel(); }); };
           r4.appendChild(ub);
         }
         bar.appendChild(r4);
@@ -1224,5 +1232,5 @@ window.WB = (function () {
     fit();
     return V;
   }
-  return { ffam: ffam, W: W, H: H, uid: uid, clone: clone, render: render, applyOp: applyOp, view: view, imgs: imgs, setImg: setImg, missingImgs: missingImgs, onImg: function (f) { imgWait.push(f); }, linkify: linkify, shapeSvg: shapeSvg };
+  return { ensureFont: ensureFont, ffam: ffam, W: W, H: H, uid: uid, clone: clone, render: render, applyOp: applyOp, view: view, imgs: imgs, setImg: setImg, missingImgs: missingImgs, onImg: function (f) { imgWait.push(f); }, linkify: linkify, shapeSvg: shapeSvg };
 })();
