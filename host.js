@@ -1466,13 +1466,25 @@
     if (!fbUser) return cb && cb();
     cloud.get('wb-fonts.json').then(function (v) {
       var fl = v && v.fonts || {}; S.fonts = S.fonts || []; var ch = false;
+      var tomb = fontTomb();
       Object.keys(fl).forEach(function (id) {
+        if (tomb[id]) { fontCloudRemove(id, fl[id].n || 1); return; }   /* 你刪過的字型：不再加回來，並補刪雲端殘留 */
         var e = S.fonts.filter(function (f) { return f.id === id; })[0];
         if (!e) { S.fonts.push({ id: id, name: fl[id].name, size: fl[id].size, cloud: true }); ch = true; } else if (!e.cloud) { e.cloud = true; ch = true; }
       });
       S.fonts.forEach(function (e) { if (e.cloud && !fl[e.id]) { e.cloud = false; ch = true; } });
       if (ch) save(); cb && cb();
     }).catch(function () { cb && cb(); });
+  }
+  function fontTomb() { try { return JSON.parse(localStorage.getItem('wb-fontdel') || '{}') || {}; } catch (e) { return {}; } }
+  function fontTombSet(id, on) { var t = fontTomb(); if (on) t[id] = 1; else delete t[id]; try { localStorage.setItem('wb-fontdel', JSON.stringify(t)); } catch (e) {} }
+  function fontCloudRemove(id, n) {
+    if (!fbUser) return Promise.resolve();
+    return fontIndexPatch(function (f) { delete f[id]; }).then(function () {
+      var seq = Promise.resolve();
+      for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return cloud.remove('wb-font-' + id + '-' + i + '.json'); }); })(i);
+      return seq;
+    }).then(function () { fontTombSet(id, false); }).catch(function () {});
   }
   function fontDelete(ent, done) {
     var used = 0;
@@ -1482,14 +1494,12 @@
       S.fonts = S.fonts.filter(function (f) { return f.id !== ent.id; });
       delete WB.imgs[ent.id]; idbDel('i', ent.id); save();
       S.pages.forEach(function (p) { boardChanged('P:' + p.id); }); showBoard();
+      toast('已刪除字型「' + ent.name + '」');
       if (fbUser && ent.cloud) {
-        cloud.get('wb-fonts.json').then(function (v) {
-          var n = v && v.fonts && v.fonts[ent.id] ? v.fonts[ent.id].n || 1 : 0, seq = Promise.resolve();
-          for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return cloud.remove('wb-font-' + ent.id + '-' + i + '.json'); }); })(i);
-          return seq;
-        }).then(function () { return fontIndexPatch(function (f) { delete f[ent.id]; }); }).catch(cloudErr);
-      }
-      toast('已刪除字型「' + ent.name + '」'); done && done();
+        fontTombSet(ent.id, true);
+        cloud.get('wb-fonts.json').then(function (v) { return v && v.fonts && v.fonts[ent.id] ? v.fonts[ent.id].n || 1 : 1; }).catch(function () { return 1; })
+          .then(function (n) { return fontCloudRemove(ent.id, n); }).then(function () { done && done(); });
+      } else done && done();
     });
   }
   function fontLibOpen() { var m = $('modal'); return !!(m && !m.hidden && m.querySelector('.fontlib')); }
