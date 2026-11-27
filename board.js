@@ -893,10 +893,11 @@ window.WB = (function () {
         var fbtn = keep(mk('button', '', '選字型 ▾', '選取的文字改用這個字型（每個字型都有範字）')); fbtn.type = 'button'; fbtn.style.fontSize = '12px'; fbtn.style.padding = '0 8px';
         fbtn.onclick = function (ev) {
           ev.preventDefault(); ev.stopPropagation(); if (fpop) return closeFpop();
+          saveSel(); if (!saved || saved.collapsed) { opt.toast && opt.toast('請先用滑鼠反白要換字型的文字，再按「選字型」'); return; }
           fpop = mk('div', 'fl-pop'); fpop.onmousedown = function (e2) { e2.preventDefault(); e2.stopPropagation(); }; fpop.onpointerdown = function (e2) { e2.stopPropagation(); };
           if (opt.fontList) opt.fontList(fpop, '', function (fv) {
-            function go(ok) { if (ok) { restoreSel(); cmd('fontName', fv ? 'wbf-' + fv : 'sans-serif'); } }
-            closeFpop(); if (fv && opt.ensureFont) opt.ensureFont(fv, function (ok) { hold = false; go(ok); }); else go(true);
+            function go(ok) { hold = false; if (ok) { restoreSel(); cmd('fontName', fv ? 'wbf-' + fv : 'sans-serif'); opt.toast && opt.toast('已套用字型'); } else restoreSel(); }
+            closeFpop(); if (fv && opt.ensureFont) { hold = true; opt.ensureFont(fv, go); } else go(true);
           });
           document.body.appendChild(fpop);
           var br = bar.getBoundingClientRect(), ph = fpop.offsetHeight, top = br.top - ph - 6; if (top < 6) top = br.bottom + 6;

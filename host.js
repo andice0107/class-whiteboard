@@ -344,6 +344,7 @@
     uploadFont: function (cb) { fontUpload(cb); },
     ensureFont: function (id, cb) { fontEnsure(id, cb); },
     fontList: function (box, cur, pick) { fontListUI(box, cur, pick); },
+    toast: function (m) { toast(m, true); },
     onContext: function (o, x, y) { if (S.mode === 'show') return; objMenu(o, x, y); },
     onWantSelect: function () { setMode('select'); },
     onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
@@ -1525,16 +1526,16 @@
     for (i = 0; i < n; i++) (function (i) { seq = seq.then(function (acc) { return cloud.get('wb-font-' + id + '-' + i + '.json').then(function (v) { if (!v || typeof v.d !== 'string') throw new Error('missing'); return acc + v.d; }); }); })(i);
     return seq;
   }
-  function fontEnsure(id, cb) {
+  function fontEnsure(id, cb, quiet) {
     if (!id || WB.imgs[id]) return cb(true);
     var ent = (S.fonts || []).filter(function (f) { return f.id === id; })[0];
     if (!fbUser || !ent) { toast('這個字型檔不在這台電腦，也沒有連上雲端，沒辦法使用'); return cb(false); }
-    toast('☁️ 正在從雲端字型庫下載「' + ent.name + '」…', true);
+    if (!quiet) toast('☁️ 正在從雲端字型庫下載「' + ent.name + '」（字型檔大時要等一下，下載好會自動套用）…', true);
     cloud.get('wb-fonts.json').then(function (v) {
       var e2 = v && v.fonts && v.fonts[id]; if (!e2) throw new Error('nofont');
       return fontCloudGet(id, e2.n || 1);
-    }).then(function (d) { WB.setImg(id, d); idbPut('i', id, d); toast('✅ 字型「' + ent.name + '」下載好了', true); cb(true); })
-      .catch(function () { toast('下載字型失敗，請確認網路和 Google 連線'); cb(false); });
+    }).then(function (d) { WB.setImg(id, d); idbPut('i', id, d); if (!quiet) toast('✅ 字型「' + ent.name + '」下載好了', true); cb(true); })
+      .catch(function (er) { toast('下載字型「' + ent.name + '」失敗（' + (er && er.message === 'need-login' ? 'Google 連線過期，請重新連線' : er && er.message === 'nofont' ? '雲端找不到這個字型' : '網路或雲端錯誤') + '）'); cb(false); });
   }
   function fontLibSync(cb) {
     if (!fbUser) return cb && cb();
@@ -1651,6 +1652,16 @@
       } catch (er) {}
     }); save();
   }
+  function fontDownloadAll() {
+    var todo = (S.fonts || []).filter(function (f) { return !WB.imgs[f.id]; }), i = 0, bad = 0;
+    if (!todo.length) return toast('字型都已經在這台電腦了');
+    function next() {
+      if (i >= todo.length) { toast('✅ 下載完成' + (bad ? '，失敗 ' + bad + ' 個' : ''), true); if (fontLibOpen()) fontLibModal(true); return; }
+      var f = todo[i++]; toast('⬇ 下載字型 ' + i + '/' + todo.length + '：' + f.name, true);
+      fontEnsure(f.id, function (ok) { if (!ok) bad++; next(); }, true);
+    }
+    next();
+  }
   function fontLibOpen() { var m = $('modal'); return !!(m && !m.hidden && m.querySelector('.fontlib')); }
   function fontLibModal(redraw) {
     function build(box) {
@@ -1670,6 +1681,7 @@
       });
       var mb = el('div', 'modal-btns');
       mb.appendChild(btn('btn', '⬆ 上傳字型', function () { fontUpload(function (f) { if (f) setTimeout(function () { fontLibModal(true); }, 200); }); }));
+      if (fbUser && S.fonts.some(function (f) { return !WB.imgs[f.id]; })) mb.appendChild(btn('btn', '⬇ 全部下載到這台電腦', fontDownloadAll));
       mb.appendChild(btn('btn', '📁 批次匯入（選資料夾）', fontBatchPick));
       mb.appendChild(btn('btn primary', '完成', closeModal)); box.appendChild(mb);
     }
