@@ -169,7 +169,7 @@
     lastMv = !!d.mv;
     cur._seen = true;
     V.setTool(tool); V.setEditable(can);
-    V.setBg(d.bg || '');
+    V.setBg(d.bg || ''); V.setBc(d.bc || '');
     V.setViewport(d.vp || null);
     document.body.classList.toggle('can-draw', can);
     pgBar(d);

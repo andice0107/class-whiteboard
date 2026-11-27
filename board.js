@@ -26,13 +26,20 @@ window.WB = (function () {
   }
   /* 圖片庫：id → dataURL；所有畫板共用 */
   var imgs = {}, imgEls = {}, imgWait = [];
-  function setImg(id, d) { imgs[id] = d; delete imgEls[id]; imgWait.forEach(function (f) { f(id); }); }
+  var fontSt = {};
+  function ensureFont(id) {
+    if (!id || fontSt[id] || !imgs[id]) return; fontSt[id] = 1;
+    try { var ff = new FontFace('wbf-' + id, 'url(' + imgs[id] + ')'); ff.load().then(function () { document.fonts.add(ff); fontSt[id] = 2; imgWait.forEach(function (f) { f(id); }); }).catch(function () { fontSt[id] = 3; }); } catch (e) { fontSt[id] = 3; }
+  }
+  function ffam(id) { return /^fn[A-Za-z0-9_]+$/.test(id || '') ? "'wbf-" + id + "',sans-serif" : ''; }
+  function ffs(o) { return o && /^fn[A-Za-z0-9_]+$/.test(o.ff || '') && typeof document !== 'undefined' && document.fonts ? '"wbf-' + o.ff + '",' : ''; }
+  function setImg(id, d) { imgs[id] = d; delete imgEls[id]; if (/^fn/.test(id)) ensureFont(id); imgWait.forEach(function (f) { f(id); }); }
   function imgEl(id) {
     if (imgEls[id]) return imgEls[id];
     if (!imgs[id]) return null;
     var im = new Image(); im.onload = function () { imgWait.forEach(function (f) { f(id); }); }; im.src = imgs[id]; imgEls[id] = im; return im;
   }
-  function missingImgs(objs) { var m = {}; objs.forEach(function (o) { if (o.k === 'i' && !imgs[o.src]) m[o.src] = 1; }); return Object.keys(m); }
+  function missingImgs(objs) { var m = {}; objs.forEach(function (o) { if (o.k === 'i' && !imgs[o.src]) m[o.src] = 1; if (o.ff && !imgs[o.ff]) m[o.ff] = 1; if (o.rt) o.rt.forEach(function (ln) { (ln || []).forEach(function (r) { if (r.f && !imgs[r.f]) m[r.f] = 1; }); }); }); return Object.keys(m); }
   var URL_RE = /(https?:\/\/[^\s<>"'，。、；！？）」』]+|www\.[^\s<>"'，。、；！？）」』]+)/g;
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function linkify(t) {
@@ -43,14 +50,14 @@ window.WB = (function () {
   function okColor(c) { return /^#[0-9a-f]{6}$/i.test(c || '') ? c : ''; }
   function runHtml(r) {
     var h = linkify(r.t), st = [];
-    if (r.b) st.push('font-weight:700'); if (r.i) st.push('font-style:italic'); if (r.u) st.push('text-decoration:underline'); if (okColor(r.c)) st.push('color:' + r.c);
+    if (r.b) st.push('font-weight:700'); if (r.i) st.push('font-style:italic'); if (r.u) st.push('text-decoration:underline'); if (okColor(r.c)) st.push('color:' + r.c); if (okColor(r.h)) st.push('background-color:' + r.h + ';border-radius:3px'); if (/^fn[A-Za-z0-9_]+$/.test(r.f || '')) { st.push('font-family:' + ffam(r.f)); ensureFont(r.f); }
     return st.length ? '<span style="' + st.join(';') + '">' + h + '</span>' : h;
   }
   function lineHtml(o) {
     var ps = String(o.txt || '').split('\n');
     return '<div class="lns">' + ps.map(function (p, i) {
       var a = o.als && o.als[i], runs = o.rt && Array.isArray(o.rt[i]) ? o.rt[i] : null;
-      var inner = runs && runs.length ? runs.map(function (r) { return runHtml({ t: String(r.t == null ? '' : r.t), b: r.b, i: r.i, u: r.u, c: r.c }); }).join('') : linkify(p);
+      var inner = runs && runs.length ? runs.map(function (r) { return runHtml({ t: String(r.t == null ? '' : r.t), b: r.b, i: r.i, u: r.u, c: r.c, h: r.h, f: r.f }); }).join('') : linkify(p);
       return '<div class="ln"' + (a && ALM[a] ? ' data-al="' + a + '" style="text-align:' + ALM[a] + '"' : '') + '>' + (inner || '<br>') + '</div>';
     }).join('') + '</div>';
   }
@@ -172,16 +179,16 @@ window.WB = (function () {
             ctx.drawImage(im, cr[0] * nw, cr[1] * nh, nw * (1 - cr[0] - cr[2]), nh * (1 - cr[1] - cr[3]), -o.w / 2, -o.h / 2, o.w, o.h);
             if (rd > 0) ctx.restore();
             if (o.bd) { try { ctx.filter = 'none'; } catch (x) {} var bw = o.bw || 4; ctx.lineWidth = bw; ctx.strokeStyle = o.bd; if (rd > 0) { ctx.stroke(); } else ctx.strokeRect(-o.w / 2 + bw / 2, -o.h / 2 + bw / 2, o.w - bw, o.h - bw); } } else { ctx.fillStyle = '#eef1f7'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); } }
-    else if (o.k === 'g') { drawShape(ctx, o); if (o.txt) { var gfs = o.fs || 32; ctx.globalAlpha = 1; ctx.fillStyle = o.tc || '#111'; ctx.font = gfs + 'px "PingFang TC","Noto Sans TC",sans-serif'; ctx.textBaseline = 'middle'; var gl = String(o.txt).split('\n'); gl.forEach(function (l, i) { var gal = lineAl(o, i, o.al || 'center'); ctx.textAlign = gal; var gx = gal === 'center' ? 0 : gal === 'right' ? o.w / 2 - 8 : -o.w / 2 + 8; ctx.fillText(l, gx, (i - (gl.length - 1) / 2) * gfs * 1.3, o.w - 12); }); } }
+    else if (o.k === 'g') { drawShape(ctx, o); if (o.txt) { var gfs = o.fs || 32; ctx.globalAlpha = 1; ctx.fillStyle = o.tc || '#111'; ctx.font = gfs + 'px ' + ffs(o) + '"PingFang TC","Noto Sans TC",sans-serif'; ctx.textBaseline = 'middle'; var gl = String(o.txt).split('\n'); gl.forEach(function (l, i) { var gal = lineAl(o, i, o.al || 'center'); ctx.textAlign = gal; var gx = gal === 'center' ? 0 : gal === 'right' ? o.w / 2 - 8 : -o.w / 2 + 8; ctx.fillText(l, gx, (i - (gl.length - 1) / 2) * gfs * 1.3, o.w - 12); }); } }
     else if (o.k === 'v') { ctx.fillStyle = '#111'; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); ctx.fillStyle = '#e53935'; var r0 = Math.min(o.w, o.h) * 0.14; ctx.beginPath(); ctx.moveTo(-r0 * 0.7, -r0); ctx.lineTo(r0 * 1.1, 0); ctx.lineTo(-r0 * 0.7, r0); ctx.closePath(); ctx.fill(); }
     else if (o.k === 'n') {
       ctx.fillStyle = o.c || '#fff3a6'; ctx.shadowColor = 'rgba(0,0,0,.18)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3; ctx.fillRect(-o.w / 2, -o.h / 2, o.w, o.h); ctx.shadowColor = 'transparent';
-      var nfs = o.fs || 28; ctx.fillStyle = '#333'; ctx.font = nfs + 'px "PingFang TC","Noto Sans TC",sans-serif'; ctx.textBaseline = 'top';
+      var nfs = o.fs || 28; ctx.fillStyle = '#333'; ctx.font = nfs + 'px ' + ffs(o) + '"PingFang TC","Noto Sans TC",sans-serif'; ctx.textBaseline = 'top';
       String(o.txt || '').split('\n').forEach(function (l, i) { var nal = lineAl(o, i, o.al || 'left'); ctx.textAlign = nal; var nx = nal === 'center' ? 0 : nal === 'right' ? o.w / 2 - 12 : -o.w / 2 + 12; ctx.fillText(l, nx, -o.h / 2 + 12 + i * nfs * 1.35, o.w - 24); });
     }
     else if (o.k === 't') {
       if (o.bd) { ctx.strokeStyle = o.bd; ctx.lineWidth = o.bw || 3; ctx.strokeRect(-o.w / 2, -o.h / 2, o.w, o.h); }
-      var fs = o.fs || 36; ctx.fillStyle = o.c || '#111'; ctx.font = fs + 'px "PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline = 'top';
+      var fs = o.fs || 36; ctx.fillStyle = o.c || '#111'; ctx.font = fs + 'px ' + ffs(o) + '"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline = 'top';
       var lines = String(o.txt || '').split('\n');
       if (!o.v) { lines.forEach(function (l, i) { var tal = lineAl(o, i, o.al || 'left'); ctx.textAlign = tal; var tx = tal === 'center' ? 0 : tal === 'right' ? o.w / 2 - 8 : -o.w / 2 + 8; ctx.fillText(l, tx, -o.h / 2 + 6 + i * fs * 1.35, o.w - 16); }); }
       else lines.forEach(function (l, i) { var x = o.w / 2 - 8 - (i + 1) * fs * 1.35; Array.from(l).forEach(function (ch, j) { ctx.fillText(ch, x, -o.h / 2 + 6 + j * fs * 1.1); }); });
@@ -267,6 +274,7 @@ window.WB = (function () {
     }
     /* 背景：'' 空白、'dots' 格點、'grid' 格線（每格 40） */
     V.bg = '';
+    V.bc = ''; V.setBc = function (c) { V.bc = okColor(c); bgl.style.backgroundColor = V.bc; dirty = true; };
     V.setBg = function (b) { V.bg = b || ''; bgl.className = 'wb-bgl' + (V.bg ? ' bg-' + V.bg : ''); dirty = true; };
     V.setViewport = function (vp) {
       vp = vp || { x: 0, y: 0, z: 1 }; var z = Math.max(1, Math.min(8, +vp.z || 1));
@@ -354,7 +362,7 @@ window.WB = (function () {
           if (o.k === 't') e.style.border = o.bd ? (o.bw || 3) + 'px solid ' + o.bd : '';
           if (o.k === 'g') t.style.color = o.tc || '#111'; else
           if (o.k === 'n') { e.style.background = o.c || '#fff3a6'; t.style.color = '#333'; } else t.style.color = o.c || '#111';
-          t.classList.toggle('vert', !!o.v);
+          t.classList.toggle('vert', !!o.v); t.style.fontFamily = ffam(o.ff); if (o.ff) ensureFont(o.ff);
           var al = o.al || (o.k === 'g' ? 'center' : 'left'); t.style.textAlign = al; if (o.k === 'g') t.style.justifyContent = al === 'left' ? 'flex-start' : al === 'right' ? 'flex-end' : 'center';
           if (editing !== o.id) { var h = ((o.als || o.rt) && !o.v && o.txt ? lineHtml(o) : linkify(o.txt)) || (o.k === 'g' ? '' : '<span class="ph">' + (o.k === 'n' ? '（點兩下寫字）' : '（點兩下輸入文字）') + '</span>'); if (t._h !== h) { t.innerHTML = h; t._h = h; } }
         }
@@ -865,6 +873,33 @@ window.WB = (function () {
         r2.appendChild(ci);
         if (window.EyeDropper) { var eb = keep(mk('button', 'eal-eye', '💧吸色', '吸取畫面上任何地方的顏色，套用到選取的文字')); eb.type = 'button'; eb.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); saveSel(); hold = true; new window.EyeDropper().open().then(function (rs) { hold = false; colorize(rs.sRGBHex); }).catch(function () { hold = false; restoreSel(); }); }; r2.appendChild(eb); }
         bar.appendChild(r2);
+        var r3 = mk('div', 'eal-r'); r3.appendChild(mk('span', 'eal-l', '底色：'));
+        function hilite(c) { restoreSel(); cmd('hiliteColor', c); saveSel(); }
+        ['#fff176', '#b9f6ca', '#a5d8ff', '#ffc2d6', '#ffd8a8', '#e0e0e0'].forEach(function (c) {
+          var b = keep(mk('button', 'eal-dot', '', '標示底色')); b.type = 'button'; b.style.background = c; b.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); cmd('hiliteColor', c); }; r3.appendChild(b);
+        });
+        var hi = keep(mk('input', 'eal-pick', '', '自選底色')); hi.type = 'color'; hi.value = '#fff176';
+        hi.onclick = function () { saveSel(); hold = true; };
+        hi.onchange = function () { hold = false; hilite(hi.value); };
+        window.addEventListener('focus', function fb2() { window.removeEventListener('focus', fb2); setTimeout(function () { if (hold) { hold = false; restoreSel(); } }, 400); });
+        r3.appendChild(hi);
+        var hn = keep(mk('button', '', '✕ 去除底色', '把選取文字的底色拿掉')); hn.type = 'button'; hn.style.fontSize = '12px'; hn.style.padding = '0 8px'; hn.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); cmd('hiliteColor', 'transparent'); }; r3.appendChild(hn);
+        bar.appendChild(r3);
+        var r4 = mk('div', 'eal-r'); r4.appendChild(mk('span', 'eal-l', '字型：'));
+        var fsel = mk('select', 'eal-sel', '', '選取的文字改用這個字型');
+        function fillFonts(sel0) { fsel.innerHTML = ''; var o0 = mk('option', '', '（預設字型）'); o0.value = ''; fsel.appendChild(o0); ((opt.fonts && opt.fonts()) || []).forEach(function (f) { var op = mk('option', '', f.name); op.value = f.id; fsel.appendChild(op); }); fsel.value = sel0 || ''; }
+        fillFonts('');
+        fsel.onmousedown = function (ev) { ev.stopPropagation(); saveSel(); hold = true; };
+        fsel.onpointerdown = function (ev) { ev.stopPropagation(); };
+        fsel.onchange = function () { hold = false; restoreSel(); cmd('fontName', fsel.value ? 'wbf-' + fsel.value : 'sans-serif'); fsel.value = ''; };
+        fsel.onblur = function () { setTimeout(function () { hold = false; }, 200); };
+        r4.appendChild(fsel);
+        if (opt.uploadFont) {
+          var ub = keep(mk('button', '', '⬆ 上傳字型', '上傳字型檔（.ttf .otf .woff .woff2），上傳後就能選')); ub.type = 'button'; ub.style.fontSize = '12px'; ub.style.padding = '0 8px';
+          ub.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); saveSel(); hold = true; opt.uploadFont(function (f) { hold = false; if (f) { fillFonts(f.id); restoreSel(); cmd('fontName', 'wbf-' + f.id); fsel.value = ''; } else restoreSel(); }); };
+          r4.appendChild(ub);
+        }
+        bar.appendChild(r4);
         t._hold = function () { return hold; };
         document.body.appendChild(bar); e._bar = bar;
         try { document.execCommand('styleWithCSS', false, true); } catch (x) {}
@@ -893,11 +928,11 @@ window.WB = (function () {
       function push(text, st) {
         if (!text) return; if (brk || !cur) start(cur ? cur.al : '');
         var l = cur.runs[cur.runs.length - 1];
-        if (l && !!l.b === !!st.b && !!l.i === !!st.i && !!l.u === !!st.u && (l.c || '') === (st.c || '')) l.t += text;
-        else { var r = { t: text }; if (st.b) r.b = 1; if (st.i) r.i = 1; if (st.u) r.u = 1; if (st.c) r.c = st.c; cur.runs.push(r); }
+        if (l && !!l.b === !!st.b && !!l.i === !!st.i && !!l.u === !!st.u && (l.c || '') === (st.c || '') && (l.h || '') === (st.h || '') && (l.f || '') === (st.f || '')) l.t += text;
+        else { var r = { t: text }; if (st.b) r.b = 1; if (st.i) r.i = 1; if (st.u) r.u = 1; if (st.c) r.c = st.c; if (st.h) r.h = st.h; if (st.f) r.f = st.f; cur.runs.push(r); }
       }
       function styleOf(n, st) {
-        var q = { b: st.b, i: st.i, u: st.u, c: st.c }, tg = n.tagName;
+        var q = { b: st.b, i: st.i, u: st.u, c: st.c, h: st.h, f: st.f }, tg = n.tagName;
         if (tg === 'B' || tg === 'STRONG') q.b = 1; if (tg === 'I' || tg === 'EM') q.i = 1; if (tg === 'U') q.u = 1;
         if (tg === 'FONT' && n.getAttribute('color')) q.c = hexOf(n.getAttribute('color'));
         var cs = n.style; if (cs) {
@@ -905,6 +940,8 @@ window.WB = (function () {
           if (cs.fontStyle) q.i = cs.fontStyle === 'italic' ? 1 : 0;
           var td = cs.textDecorationLine || cs.textDecoration || ''; if (td) q.u = td.indexOf('underline') >= 0 ? 1 : 0;
           if (cs.color) q.c = hexOf(cs.color);
+          if (cs.backgroundColor) q.h = hexOf(cs.backgroundColor);
+          if (cs.fontFamily) { var fm = /wbf-(fn[A-Za-z0-9_]+)/.exec(cs.fontFamily); q.f = fm ? fm[1] : ''; }
         }
         return q;
       }
@@ -936,7 +973,7 @@ window.WB = (function () {
         while (rd.length > 1 && !rd[rd.length - 1].runs.length) rd.pop();
         txt = rd.map(function (q) { return q.runs.map(function (r) { return r.t; }).join(''); }).join('\n');
         var as = rd.map(function (q) { return q.al; }); if (as.some(function (x) { return x; })) als = as;
-        if (rd.some(function (q) { return q.runs.some(function (r) { return r.b || r.i || r.u || r.c; }); })) rt = rd.map(function (q) { return q.runs; });
+        if (rd.some(function (q) { return q.runs.some(function (r) { return r.b || r.i || r.u || r.c || r.h || r.f; }); })) rt = rd.map(function (q) { return q.runs; });
       } else txt = t.innerText.replace(/\n$/, '');
       t._h = null;
       var alsOld = JSON.stringify(o.als || null), alsNew = JSON.stringify(als), rtOld = JSON.stringify(o.rt || null), rtNew = JSON.stringify(rt);
@@ -1185,5 +1222,5 @@ window.WB = (function () {
     fit();
     return V;
   }
-  return { W: W, H: H, uid: uid, clone: clone, render: render, applyOp: applyOp, view: view, imgs: imgs, setImg: setImg, missingImgs: missingImgs, onImg: function (f) { imgWait.push(f); }, linkify: linkify, shapeSvg: shapeSvg };
+  return { ffam: ffam, W: W, H: H, uid: uid, clone: clone, render: render, applyOp: applyOp, view: view, imgs: imgs, setImg: setImg, missingImgs: missingImgs, onImg: function (f) { imgWait.push(f); }, linkify: linkify, shapeSvg: shapeSvg };
 })();

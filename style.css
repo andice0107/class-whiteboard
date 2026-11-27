@@ -688,3 +688,5 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .tts-bar .tts-r .tts-rate{min-width:34px;font-size:13px}
 .tts-bar .tts-r .tts-go{flex:0 0 96px;width:96px;max-width:96px}
 .tts-bar .tts-r .tts-rate{flex:0 0 auto}
+.edit-al .eal-sel{height:30px;max-width:150px;border:1px solid #ccd;border-radius:6px;font-size:13px}
+.pron-list{max-height:40vh;overflow:auto;display:flex;flex-direction:column;gap:6px;margin:6px 0}.pron-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid #e5ded3;border-radius:8px;background:#fff}

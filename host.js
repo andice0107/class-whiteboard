@@ -3,8 +3,9 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var HAS_TTS = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
-  var TTS = { on: false, rate: 1, voice: '', dir: 'h', q: [], i: 0, st: 'idle', gen: 0 };
-  try { var tt0 = JSON.parse(localStorage.getItem('wb-tts') || 'null'); if (tt0) { TTS.rate = Math.max(0.5, Math.min(1.6, +tt0.rate || 1)); TTS.voice = tt0.voice || ''; TTS.dir = tt0.dir === 'v' ? 'v' : 'h'; TTS.sym = !!tt0.sym; } } catch (e) {}
+  var TTS = { pron: [], on: false, rate: 1, voice: '', dir: 'h', q: [], i: 0, st: 'idle', gen: 0 };
+  try { var tt0 = JSON.parse(localStorage.getItem('wb-tts') || 'null'); if (tt0) { TTS.rate = Math.max(0.5, Math.min(1.6, +tt0.rate || 1)); TTS.voice = tt0.voice || ''; TTS.dir = tt0.dir === 'v' ? 'v' : 'h'; TTS.sym = !!tt0.sym; }
+  try { var pr0 = JSON.parse(localStorage.getItem('wb-pron') || '[]'); if (Array.isArray(pr0)) TTS.pron = pr0.filter(function (r) { return r && r[0]; }).map(function (r) { return [String(r[0]), String(r[1] == null ? '' : r[1])]; }); } catch (e) {} } catch (e) {}
   var COLORS = ['#111111', '#e53935', '#1e63d6', '#16a34a', '#f08c00', '#8e44ad', '#ff4fa3', '#ffffff'];
   var PALETTE = ['#111111', '#555555', '#e53935', '#f08c00', '#f5c400', '#16a34a', '#1e63d6', '#8e44ad', '#ff4fa3', '#8b5a2b', '#ffffff',
     '#ffd6e0', '#ffe5c2', '#fff3a6', '#d9f5d0', '#cfe8ff', '#e6d9ff', '#ffcccc', '#c8f0ec'];
@@ -184,10 +185,15 @@
     gids.forEach(function (gid) { var g = S.groups[gid]; if (!g || !g.pages) return; var i = g.pages.indexOf(g.cur) + d; if (i < 0 || i >= g.pages.length) return; assign(gid, g.pages[i], true); n++; });
     save(); refreshAll(); renderPages(); renderTask(); toast(n ? '已讓 ' + n + ' 組換到' + (d > 0 ? '下一頁' : '上一頁') : '沒有可以換頁的組別（已經是' + (d > 0 ? '最後' : '第一') + '頁了，或還沒有指派多頁）');
   }
-  function metaKey(v) { return [v.pen, v.note, v.mv, v.title, v.mode, v.end, JSON.stringify(v.vp), bgOf(v.bid)].join('|'); }
+  function bcOf(bid) {
+    if (!bid) return '';
+    var p0 = bid.slice(0, 2) === 'P:' ? page(bid.slice(2)) : (function () { var g = S.groups[bid.slice(2)]; return g && g.cur && page(g.cur); })();
+    return p0 && /^#[0-9a-f]{6}$/i.test(p0.bc || '') ? p0.bc : '';
+  }
+  function metaKey(v) { return [v.pen, v.note, v.mv, v.title, v.mode, v.end, JSON.stringify(v.vp), bgOf(v.bid), bcOf(v.bid)].join('|'); }
   function refresh(sid, force) {
     var st = S.students[sid]; if (!st || !online[sid]) return;
-    var v = viewFor(sid), L = lastSent[sid], m = { cid: st.cid, bid: v.bid, pen: v.pen, note: v.note, mv: !!v.mv, title: v.title, mode: v.mode, left: v.end ? Math.max(0, v.end - Date.now()) : null, vp: v.vp, bg: bgOf(v.bid) };
+    var v = viewFor(sid), L = lastSent[sid], m = { cid: st.cid, bid: v.bid, pen: v.pen, note: v.note, mv: !!v.mv, title: v.title, mode: v.mode, left: v.end ? Math.max(0, v.end - Date.now()) : null, vp: v.vp, bg: bgOf(v.bid), bc: bcOf(v.bid) };
     var pgx = pgMeta(sid, v); m.pgn = pgx.pgn; m.pgt = pgx.pgt; m.pgf = pgx.pgf;
     if (force || !L || L.bid !== v.bid || L.gen !== genOf(v.bid)) { m.t = 'view'; m.objs = objsOf(v.bid) || []; net.send(m, sid);
       if (V && V.bid === v.bid) m.objs.forEach(function (o) { var vs = o.k === 'v' && V.vt[o.id]; if (vs && vs.s === 1) net.send({ t: 'vid', bid: v.bid, id: o.id, cmd: 'play', at: vs.t || 0 }, sid); }); }
@@ -334,6 +340,8 @@
       if (layerBox && !temp) layersDraw();
     },
     onSelect: function (o) { if (pop && pop._obj && (!o || pop._obj !== o.id)) closePop(); if (layerBox) layersDraw(); },
+    fonts: function () { return S.fonts || []; },
+    uploadFont: function (cb) { fontUpload(cb); },
     onContext: function (o, x, y) { if (S.mode === 'show') return; objMenu(o, x, y); },
     onWantSelect: function () { setMode('select'); },
     onGroupMenu: function (x, y) { if (S.mode === 'show') return; groupMenu(x, y); },
@@ -388,7 +396,7 @@
     if (tv.kind === 'group' && !(S.groups[tv.gid] && S.groups[tv.gid].cur)) tv = { kind: 'page' };
     var bid = curBid();
     V.load(bid, objsOf(bid));
-    V.setBg(bgOf(bid));
+    V.setBg(bgOf(bid)); V.setBc(bcOf(bid));
     V.setViewport(tv.kind === 'page' ? S.zoom : null);
     renderCtx(); renderPages(); renderTools(); renderNav();
   }
@@ -629,6 +637,10 @@
     var pid = tv.kind === 'group' ? S.groups[tv.gid].cur : S.cur, p = page(pid); if (!p) return;
     p.bg = b; save(); V.setBg(b); renderTools(); refreshAll(); boardChanged('P:' + pid);
   }
+  function setBc(c) {
+    var pid = tv.kind === 'group' ? S.groups[tv.gid].cur : S.cur, p = page(pid); if (!p) return;
+    p.bc = c || ''; save(); V.setBc(p.bc); refreshAll(); boardChanged('P:' + pid);
+  }
   function swatches(list, curC, fn, cls) {
     var w = el('div', 'swatches' + (cls ? ' ' + cls : ''));
     list.forEach(function (c) { var b = btn('sw' + (curC === c ? ' on' : ''), '', function () { fn(c); }); b.style.background = c; b.title = c; w.appendChild(b); });
@@ -816,6 +828,9 @@
       r = el('div', 'pop-row');
       BGS.forEach(function (b) { r.appendChild(btn('btn' + ((V.bg || '') === b[0] ? ' primary' : ''), b[1], function () { closePop(); setBg(b[0]); })); });
       p.appendChild(r);
+      p.appendChild(el('div', 'pop-l tag t4', '🎨 畫布底色（這一頁；底色太深時請把筆改成淺色）'));
+      p.appendChild(swatches(['#ffffff', '#fff8e1', '#fffde7', '#e8f5e9', '#e3f2fd', '#fce4ec', '#f3e5f5', '#eceff1', '#37474f', '#1b1b1b'], V.bc || '#ffffff', function (c) { setBc(c === '#ffffff' ? '' : c); insertPanel(anchor); }));
+      p.appendChild(btn('btn sm', '↺ 改回白色', function () { setBc(''); insertPanel(anchor); }));
       p.appendChild(el('div', 'pop-l', '學生能不能貼便利貼，在「📋 任務指派」每一組設定。'));
     });
   }
@@ -895,6 +910,16 @@
           r1.appendChild(btn('btn sm' + (!o.v ? ' primary' : ''), '橫式', function () { if (o.v) chg({ v: false, w: o.h, h: o.w }); }));
           r1.appendChild(btn('btn sm' + (o.v ? ' primary' : ''), '直式', function () { if (!o.v) chg({ v: true, w: o.h, h: o.w }); }));
         }
+      }
+      if (o.k === 't' || o.k === 'n' || (o.k === 'g' && o.shape !== 'zycell')) {
+        var fr = row(); fr.appendChild(el('span', '', '字型'));
+        var fs0 = el('select', 'font-sel'), op0 = el('option', '', '（預設字型）'); op0.value = ''; fs0.appendChild(op0);
+        (S.fonts || []).forEach(function (f) { var op = el('option', '', f.name); op.value = f.id; fs0.appendChild(op); });
+        fs0.value = o.ff || '';
+        fs0.onchange = function () { chg({ ff: fs0.value || '' }); };
+        fr.appendChild(fs0);
+        fr.appendChild(btn('btn sm', '⬆ 上傳字型', function () { fontUpload(function (f) { if (f) chg({ ff: f.id }); }); }));
+        m.appendChild(el('div', 'pop-l', '整個框的字型。只想改幾個字：點兩下進入編輯、反白後在工具列選字型。'));
       }
       function alignRow(def) {
         var cur = o.al || def, ar = row(); ar.appendChild(el('span', '', '文字對齊'));
@@ -1220,6 +1245,8 @@
   function ttsChunks(text) {
     var out = [];
     if (!TTS.sym) text = String(text || '').replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200d\ufe0e\ufe0f\u20e3\p{So}]/gu, '');   /* 預設不唸 emoji 和符號 */
+    text = String(text || '');
+    TTS.pron.slice().sort(function (a, b) { return b[0].length - a[0].length; }).forEach(function (r) { if (r[0]) text = text.split(r[0]).join(r[1]); });   /* 讀音修正：只改唸的聲音，畫面上的字不變 */
     String(text || '').split('\n').forEach(function (line) {
       (line.match(/[^。！？!?；;]+[。！？!?；;]*/g) || []).forEach(function (s) {
         s = s.trim(); if (!s) return;
@@ -1309,6 +1336,52 @@
     if (!TTS.on) return;
     setTimeout(function () { var t = ttsSelectedText(); if (t) ttsRun(ttsChunks(t)); }, 200);
   }, true);
+  var PRON_SAMPLE = [['銀行', '銀航'], ['校長', '校掌'], ['音樂', '音月'], ['快樂', '快悅'], ['重複', '蟲複'], ['重新', '蟲新'], ['好奇', '浩奇'], ['參加', '餐加'], ['因為', '因衛'], ['為了', '衛了'], ['轉動', '賺動']];
+  function pronSave() {
+    try { localStorage.setItem('wb-pron', JSON.stringify(TTS.pron)); } catch (e) {}
+    if (fbUser) { try { cloud.set('wb-pron.json', { rules: TTS.pron, at: Date.now() }).catch(function () {}); } catch (e) {} }
+  }
+  function pronModal() {
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🔧 讀音修正'));
+      box.appendChild(el('p', 'hint', '唸讀遇到某個詞唸錯時，在這裡寫「這個詞」要「改唸成什麼」（找一個讀音一樣的字）。只會改唸的聲音，畫面上的字不會變。例如 銀行 → 銀航。'));
+      var list = el('div', 'pron-list');
+      function draw() {
+        list.innerHTML = '';
+        if (!TTS.pron.length) list.appendChild(el('p', 'hint', '目前沒有任何修正。'));
+        TTS.pron.forEach(function (r, i) {
+          var row = el('div', 'pron-row');
+          row.appendChild(el('b', '', esc(r[0]))); row.appendChild(el('span', '', '→'));
+          row.appendChild(el('b', '', esc(r[1]) || '（不唸）')); row.appendChild(el('span', 'grow'));
+          row.appendChild(btn('btn sm', '▶ 試聽', function () { if (!HAS_TTS) return; ttsRun(ttsChunks(r[0])); }));
+          row.appendChild(btn('btn sm ghost del', '🗑', function () { TTS.pron.splice(i, 1); pronSave(); draw(); renderTools(); }));
+          list.appendChild(row);
+        });
+      }
+      box.appendChild(list);
+      var ar = el('div', 'pop-row'), a = el('input', 'num'), b = el('input', 'num');
+      a.placeholder = '這個詞'; b.placeholder = '改唸成'; a.style.width = '38%'; b.style.width = '38%';
+      ar.appendChild(a); ar.appendChild(el('span', '', '→')); ar.appendChild(b);
+      function add() {
+        var f = a.value.trim(), t = b.value.trim(); if (!f) return toast('請先填「這個詞」');
+        var ex = TTS.pron.filter(function (r) { return r[0] === f; })[0]; if (ex) ex[1] = t; else TTS.pron.push([f, t]);
+        a.value = ''; b.value = ''; pronSave(); draw(); renderTools();
+      }
+      ar.appendChild(btn('btn sm primary', '新增', add));
+      box.appendChild(ar);
+      var br = el('div', 'pop-row');
+      br.appendChild(btn('btn sm', '加入常見多音字範例', function () { PRON_SAMPLE.forEach(function (s0) { if (!TTS.pron.some(function (r) { return r[0] === s0[0]; })) TTS.pron.push(s0.slice()); }); pronSave(); draw(); renderTools(); toast('已加入範例，不需要的可以刪掉'); }));
+      box.appendChild(br);
+      box.appendChild(el('p', 'hint', fbUser ? '已登入 Google：修正表會存在你自己的雲端硬碟，換電腦也在。' : '沒有登入 Google 時，修正表只存在這台電腦的這個瀏覽器。登入後（「💾 專案」→ 我的專案）才會跟著帳號走。'));
+      var mb = el('div', 'modal-btns'); mb.appendChild(btn('btn primary', '完成', closeModal)); box.appendChild(mb);
+      draw();
+      if (fbUser) cloud.get('wb-pron.json').then(function (v) {
+        if (!v || !Array.isArray(v.rules)) return; var ch = false;
+        v.rules.forEach(function (r) { if (r && r[0] && !TTS.pron.some(function (x) { return x[0] === String(r[0]); })) { TTS.pron.push([String(r[0]), String(r[1] == null ? '' : r[1])]); ch = true; } });
+        if (ch) { try { localStorage.setItem('wb-pron', JSON.stringify(TTS.pron)); } catch (e) {} draw(); renderTools(); }
+      }).catch(function () {});
+    });
+  }
   function readPanel(anchor) {
     openPop(anchor, function (p) {
       p.appendChild(el('div', 'pop-h', '🔊 唸讀文字框'));
@@ -1321,6 +1394,7 @@
       p.appendChild(dr);
       p.appendChild(el('p', 'hint', '直式文字框請選「直向」，會從最右邊那一行開始唸；橫式文字框選哪個都是由上到下。'));
       p.appendChild(btn('mi' + (TTS.sym ? ' on' : ''), TTS.sym ? '✅ 唸出符號與 emoji：是（按一下改成不唸）' : '唸出符號與 emoji：否（按一下改成要唸）', function () { TTS.sym = !TTS.sym; ttsSave(); readPanel(tbAnchor('read')); }));
+      p.appendChild(btn('mi', '🔧 讀音修正（多音字唸錯時用）' + (TTS.pron.length ? '・' + TTS.pron.length + ' 條' : ''), function () { closePop(); pronModal(); }));
       p.appendChild(el('div', 'pop-l', '速度（同一個聲音變快變慢）'));
       var sr = el('div', 'pop-row'), sl = el('input'), sv = el('b', 'tts-rate', TTS.rate.toFixed(2).replace(/0$/, '') + '×');
       sl.type = 'range'; sl.min = 0.5; sl.max = 1.6; sl.step = 0.05; sl.value = TTS.rate; sl.oninput = function () { sv.textContent = (+sl.value).toFixed(2).replace(/0$/, '') + '×'; }; sl.onchange = function () { ttsSetRate(+sl.value); };
@@ -1334,6 +1408,27 @@
       p.appendChild(btn('btn sm', '▶ 試聽', function () { TTS.on = true; ttsRun(['你好，這是試聽的聲音。']); renderTools(); }));
       p.appendChild(el('p', 'hint', '預設選「Google 國語（臺灣）」，沒有的話改用這台電腦上最接近的中文語音。iPad 的 Safari 只有系統內建的中文語音。'));
     });
+  }
+  /* ---------- 上傳字型：字型檔存在老師端，用到的字型會像圖片一樣傳給學生 ---------- */
+  function fontUpload(cb) {
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.ttf,.otf,.woff,.woff2,font/*'; var done = false;
+    function fin(v) { if (done) return; done = true; cb(v); }
+    inp.onchange = function () {
+      var f = inp.files && inp.files[0]; if (!f) return fin(null);
+      if (f.size > 14 * 1048576) { toast('這個字型檔太大了（' + (f.size / 1048576).toFixed(1) + ' MB），請用 14 MB 以下的檔案'); return fin(null); }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var id = 'fn' + WB.uid(), name = f.name.replace(/\.[^.]+$/, ''), d = String(fr.result);
+        var test = new FontFace('wbf-' + id, 'url(' + d + ')');
+        test.load().then(function () {
+          WB.setImg(id, d); idbPut('i', id, d); S.fonts = S.fonts || []; var ent = { id: id, name: name }; S.fonts.push(ent); save();
+          toast('✅ 已加入字型「' + name + '」'); fin(ent);
+        }).catch(function () { toast('這個字型檔讀不出來，請確認是 .ttf .otf .woff 或 .woff2'); fin(null); });
+      };
+      fr.onerror = function () { fin(null); }; fr.readAsDataURL(f);
+    };
+    inp.addEventListener('cancel', function () { fin(null); });
+    inp.click();
   }
   /* ---------- 加入圖片、文字、便利貼、連結 ---------- */
   function center(w, h) {
@@ -1629,8 +1724,8 @@
       paint();
     });
   }
-  function newPage(after, objs, bg) {
-    var np = { id: WB.uid(), objs: objs || [], bg: bg || '' }, idx = pageIdx(after);
+  function newPage(after, objs, bg, bc) {
+    var np = { id: WB.uid(), objs: objs || [], bg: bg || '', bc: bc || '' }, idx = pageIdx(after);
     S.pages.splice(idx + 1, 0, np); S.cur = np.id; S.zoom = null; tv = { kind: 'page' }; save(); refreshAll(); showBoard();
     setTimeout(function () { var on = $('pages').querySelector('.pg.on'); if (on) on.scrollIntoView({ block: 'nearest' }); }, 30);
     return np;
@@ -1645,13 +1740,13 @@
       item('📋 指派給組別…', function () { openTask([p.id]); });
       item('📋 直接指派給全部組別', function () { assignPages([p.id], liveGroups()); S.assignAll = p.id; save(); toast('已把第 ' + (i + 1) + ' 頁指派給全部組別' + (S.mode === 'work' ? '' : '，按「作業模式」學生才能開始操作')); });
       if (liveGroups().some(function (g) { return S.groups[g].cur === p.id; })) item('⛔ 收回這一頁的指派', function () { liveGroups().forEach(function (g) { if (S.groups[g].cur === p.id) S.groups[g].cur = null; }); if (S.assignAll === p.id) S.assignAll = null; save(); refreshAll(); renderPages(); renderTask(); });
-      item('📄 複製這一頁', function () { newPage(p.id, WB.clone(p.objs).map(function (o) { o.id = WB.uid(); return o; }), p.bg); toast('已複製成第 ' + (i + 2) + ' 頁'); });
+      item('📄 複製這一頁', function () { newPage(p.id, WB.clone(p.objs).map(function (o) { o.id = WB.uid(); return o; }), p.bg, p.bc); toast('已複製成第 ' + (i + 2) + ' 頁'); });
       item('➕ 在後面新增空白頁', function () { newPage(p.id); });
       if (i > 0) item('⬆️ 往前移', function () { S.pages.splice(i, 1); S.pages.splice(i - 1, 0, p); save(); renderPages(); refreshAll(); });
       if (i < S.pages.length - 1) item('⬇️ 往後移', function () { S.pages.splice(i, 1); S.pages.splice(i + 1, 0, p); save(); renderPages(); refreshAll(); });
       item('▦ 背景：' + (BGS.filter(function (x) { return x[0] === (p.bg || ''); })[0] || ['', '空白'])[1].replace(/^\S+ /, '') + '（點一下換）', function () { var bi = 0; BGS.forEach(function (x, ix) { if (x[0] === (p.bg || '')) bi = ix; }); p.bg = BGS[(bi + 1) % BGS.length][0]; save(); if (curBid() === 'P:' + p.id) V.setBg(p.bg); refreshAll(); boardChanged('P:' + p.id); renderTools(); });
       item('🧹 清除這一頁的筆劃', function () { confirmBox('要清除第 ' + (i + 1) + ' 頁的所有筆劃嗎？（圖片、文字、圖形、便利貼會保留）', '清除', function () { var rem = p.objs.filter(function (o) { return o.k === 's'; }).map(function (o) { return o.id; }); WB.applyOp(p.objs, { del: rem }); distribute('P:' + p.id, { t: 'op', op: { del: rem, add: [] } }); if (V.bid === 'P:' + p.id) V.apply(V.bid, { del: rem }); save(); boardChanged('P:' + p.id); }); });
-      item('💾 這一頁另存成圖片', function () { var cv = document.createElement('canvas'); cv.width = 1600; cv.height = 900; WB.render(cv.getContext('2d'), p.objs, 1, '#fff', true); var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = 'Andice的共用畫板_第' + (i + 1) + '頁.png'; a.click(); });
+      item('💾 這一頁另存成圖片', function () { var cv = document.createElement('canvas'); cv.width = 1600; cv.height = 900; WB.render(cv.getContext('2d'), p.objs, 1, p.bc || '#fff', true); var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = 'Andice的共用畫板_第' + (i + 1) + '頁.png'; a.click(); });
       if (S.pages.length > 1) item('🗑️ 刪除這一頁', function () { confirmBox('要刪除第 ' + (i + 1) + ' 頁嗎？（指派到這一頁的組別作答內容也會一起刪除，刪掉就救不回來）', '刪除', function () { delPage(p.id); }); }, 'danger');
     });
   }
@@ -2240,14 +2335,17 @@
 
   /* ---------- 專案：存檔／開啟 ---------- */
   function projectData() {
-    var used = {};
-    S.pages.forEach(function (p) { p.objs.forEach(function (o) { if (o.k === 'i') used[o.src] = WB.imgs[o.src]; }); });
-    return { app: 'class-whiteboard', v: 1, name: S.projName || '', savedAt: new Date().toISOString(), pages: S.pages, imgs: used };
+    var used = {}, fu = {};
+    S.pages.forEach(function (p) { p.objs.forEach(function (o) { if (o.k === 'i') used[o.src] = WB.imgs[o.src]; if (o.ff) fu[o.ff] = 1; if (o.rt) o.rt.forEach(function (ln) { (ln || []).forEach(function (r) { if (r.f) fu[r.f] = 1; }); }); }); });
+    var fl = (S.fonts || []).filter(function (f) { return fu[f.id] && WB.imgs[f.id]; });
+    fl.forEach(function (f) { used[f.id] = WB.imgs[f.id]; });
+    return { app: 'class-whiteboard', v: 1, name: S.projName || '', savedAt: new Date().toISOString(), pages: S.pages, imgs: used, fonts: fl };
   }
   function loadProject(d) {
     if (!d || d.app !== 'class-whiteboard' || !Array.isArray(d.pages) || !d.pages.length) { toast('這不是「Andice的共用畫板」的專案檔'); return false; }
     Object.keys(d.imgs || {}).forEach(function (id) { if (d.imgs[id]) { WB.setImg(id, d.imgs[id]); idbPut('i', id, d.imgs[id]); } });
-    S.pages = d.pages.map(function (p) { return { id: p.id || WB.uid(), objs: p.objs || [], bg: p.bg || '' }; });
+    S.fonts = S.fonts || []; (d.fonts || []).forEach(function (f) { if (f && f.id && !S.fonts.some(function (x) { return x.id === f.id; })) S.fonts.push({ id: f.id, name: f.name || '字型' }); });
+    S.pages = d.pages.map(function (p) { return { id: p.id || WB.uid(), objs: p.objs || [], bg: p.bg || '', bc: p.bc || '' }; });
     S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null; S.cloudKey = null; S.myPid = null;
     for (var g in S.groups) { S.groups[g].boards = {}; S.groups[g].cur = null; }
     if (S.mode === 'work') { S.mode = 'present'; S.workEnd = null; }
