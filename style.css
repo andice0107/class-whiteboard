@@ -697,3 +697,7 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .pron-row .fl-s{font-size:20px;color:#111}
 .fontlib .pron-row{flex-wrap:wrap}
 .bc-prev{height:60px;border:1px solid #ccd;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#888;margin:6px 0}
+.modal-box.fontlib{max-width:680px}
+.fontlib .modal-btns{flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.fontlib .pron-row .fl-s{order:5;flex:1 0 100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fontlib .pron-row .btn{flex:none}

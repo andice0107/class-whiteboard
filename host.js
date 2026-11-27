@@ -1652,6 +1652,50 @@
       } catch (er) {}
     }); save();
   }
+  /* ---------- 匯出（備份）：把字型庫的字型存成檔案 ---------- */
+  function fontBytes(f) { return new Promise(function (res) { fontEnsure(f.id, function (ok) { if (!ok) return res(null); fetch(WB.imgs[f.id]).then(function (r) { return r.arrayBuffer(); }).then(function (ab) { res(new Uint8Array(ab)); }).catch(function () { res(null); }); }, true); }); }
+  function fontExt(u) { var t = String.fromCharCode(u[0], u[1], u[2], u[3]); return t === 'OTTO' ? '.otf' : t === 'wOFF' ? '.woff' : t === 'wOF2' ? '.woff2' : '.ttf'; }
+  function fontFileName(f, u) { return String(f.file || f.name).replace(/[\\\/:*?"<>|]/g, '_') + fontExt(u); }
+  function saveBlob(blob, name) { var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 5000); }
+  function fontExportOne(f) {
+    toast('準備匯出「' + f.name + '」…', true);
+    fontBytes(f).then(function (u) { if (!u) return toast('匯出失敗：這個字型檔不在這台電腦，也下載不到'); saveBlob(new Blob([u]), fontFileName(f, u)); toast('✅ 已下載「' + f.name + '」', true); });
+  }
+  var CRCT = null;
+  function crc32(u) { if (!CRCT) { CRCT = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRCT[n] = c >>> 0; } } var r = 0xFFFFFFFF; for (var i = 0; i < u.length; i++) r = CRCT[(r ^ u[i]) & 255] ^ (r >>> 8); return (r ^ 0xFFFFFFFF) >>> 0; }
+  function zipStore(files) {   /* 不壓縮的 zip（字型本來就壓縮過，不壓縮最穩） */
+    var parts = [], cen = [], off = 0, enc = new TextEncoder(), d = new Date();
+    var dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(), tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    files.forEach(function (f) {
+      var nm = enc.encode(f.name), crc = crc32(f.data), h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true); h.setUint16(10, tm, true); h.setUint16(12, dt, true);
+      h.setUint32(14, crc, true); h.setUint32(18, f.data.length, true); h.setUint32(22, f.data.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+      parts.push(new Uint8Array(h.buffer), nm, f.data);
+      var c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true); c.setUint16(12, tm, true); c.setUint16(14, dt, true);
+      c.setUint32(16, crc, true); c.setUint32(20, f.data.length, true); c.setUint32(24, f.data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+      cen.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + f.data.length;
+    });
+    var cl = 0; cen.forEach(function (x) { cl += x.length; });
+    var e = new DataView(new ArrayBuffer(22)); e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cl, true); e.setUint32(16, off, true);
+    return new Blob(parts.concat(cen, [new Uint8Array(e.buffer)]), { type: 'application/zip' });
+  }
+  function fontExportAll() {
+    var list = (S.fonts || []).slice(), out = [], used = {}, i = 0, bad = 0;
+    if (!list.length) return toast('字型庫是空的');
+    function next() {
+      if (i >= list.length) {
+        if (!out.length) return toast('匯出失敗：沒有任何字型可以匯出');
+        saveBlob(zipStore(out), '共用畫板字型備份_' + stamp() + '.zip'); toast('✅ 已匯出 ' + out.length + ' 個字型' + (bad ? '，' + bad + ' 個失敗' : '') + '（zip 內是原始字型檔，TTC 已拆成個別字型）', true); return;
+      }
+      var f = list[i++]; toast('📦 打包字型 ' + i + '/' + list.length + '：' + f.name, true);
+      fontBytes(f).then(function (u) {
+        if (!u) bad++; else { var nm = fontFileName(f, u), k = 1, base = nm; while (used[nm]) { nm = base.replace(/(\.[^.]+)$/, '-' + (++k) + '$1'); } used[nm] = 1; out.push({ name: nm, data: u }); }
+        next();
+      });
+    }
+    next();
+  }
   function fontDownloadAll() {
     var todo = (S.fonts || []).filter(function (f) { return !WB.imgs[f.id]; }), i = 0, bad = 0;
     if (!todo.length) return toast('字型都已經在這台電腦了');
@@ -1676,12 +1720,14 @@
         row.appendChild(el('b', '', esc(f.name))); if (have) { WB.ensureFont(f.id); var sp = el('span', 'fl-s', FONT_SAMPLE); sp.style.fontFamily = WB.ffam(f.id); sp.style.fontSize = '20px'; row.appendChild(sp); } row.appendChild(el('span', 'hint', (sz ? (sz / 1048576).toFixed(1) + ' MB・' : '') + (f.cloud ? '☁️已在雲端' : '只在這台電腦') + (have ? '' : '・未下載')));
         row.appendChild(el('span', 'grow'));
         if (fbUser && !f.cloud && have) row.appendChild(btn('btn sm', '☁️ 存到雲端', function () { toast('正在上傳到雲端…', true); fontCloudPut(f); }));
+        row.appendChild(btn('btn sm', '⬇ 匯出', function () { fontExportOne(f); }));
         row.appendChild(btn('btn sm ghost del', '🗑', function () { closeModal(); fontDelete(f, function () { fontLibModal(); }); }));
         list.appendChild(row);
       });
       var mb = el('div', 'modal-btns');
       mb.appendChild(btn('btn', '⬆ 上傳字型', function () { fontUpload(function (f) { if (f) setTimeout(function () { fontLibModal(true); }, 200); }); }));
       if (fbUser && S.fonts.some(function (f) { return !WB.imgs[f.id]; })) mb.appendChild(btn('btn', '⬇ 全部下載到這台電腦', fontDownloadAll));
+      if (S.fonts.length) mb.appendChild(btn('btn', '📦 全部匯出成 zip（備份）', fontExportAll));
       mb.appendChild(btn('btn', '📁 批次匯入（選資料夾）', fontBatchPick));
       mb.appendChild(btn('btn primary', '完成', closeModal)); box.appendChild(mb);
     }
