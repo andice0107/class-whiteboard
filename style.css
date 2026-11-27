@@ -696,3 +696,4 @@ body.student .wb-v.sp iframe{pointer-events:auto!important}
 .fl-pop{position:fixed;z-index:200;background:#fff;border:2px solid #3157d5;border-radius:12px;padding:6px;width:300px;max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:4px;box-shadow:0 4px 16px #0004}
 .pron-row .fl-s{font-size:20px;color:#111}
 .fontlib .pron-row{flex-wrap:wrap}
+.bc-prev{height:60px;border:1px solid #ccd;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#888;margin:6px 0}

@@ -639,6 +639,22 @@
     var pid = tv.kind === 'group' ? S.groups[tv.gid].cur : S.cur, p = page(pid); if (!p) return;
     p.bg = b; save(); V.setBg(b); renderTools(); refreshAll(); boardChanged('P:' + pid);
   }
+  function bcAsk(c) {
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🎨 畫布底色要套用到哪裡？'));
+      var pv = el('div', 'bc-prev'); pv.style.background = c || '#ffffff'; pv.textContent = c ? '預覽：' + c : '預覽：白色'; box.appendChild(pv);
+      box.appendChild(el('p', 'hint', '「全部頁面」會改掉現有每一頁，之後新增的頁面也會用這個顏色（直到你再改）。'));
+      var mb = el('div', 'modal-btns');
+      mb.appendChild(btn('btn', '取消', closeModal));
+      mb.appendChild(btn('btn', '只改這一頁', function () { closeModal(); setBc(c); toast('這一頁的底色已改'); }));
+      mb.appendChild(btn('btn primary', '全部頁面（含之後新增）', function () { closeModal(); setBcAll(c); toast('已套用到全部 ' + S.pages.length + ' 頁，之後新增的頁面也會用這個底色'); }));
+      box.appendChild(mb);
+    });
+  }
+  function setBcAll(c) {
+    S.defBc = c || ''; S.pages.forEach(function (p) { p.bc = c || ''; }); save();
+    var cp = tv.kind === 'group' ? S.groups[tv.gid].cur : S.cur, pg = page(cp); V.setBc(pg ? pg.bc : ''); refreshAll(); S.pages.forEach(function (p) { boardChanged('P:' + p.id); });
+  }
   function setBc(c) {
     var pid = tv.kind === 'group' ? S.groups[tv.gid].cur : S.cur, p = page(pid); if (!p) return;
     p.bc = c || ''; save(); V.setBc(p.bc); refreshAll(); boardChanged('P:' + pid);
@@ -832,8 +848,8 @@
       p.appendChild(r);
       p.appendChild(btn('mi', '🔤 字型庫（上傳、刪除字型）', function () { closePop(); fontLibModal(); }));
       p.appendChild(el('div', 'pop-l tag t4', '🎨 畫布底色（這一頁；底色太深時請把筆改成淺色）'));
-      p.appendChild(swatches(['#ffffff', '#fff8e1', '#fffde7', '#e8f5e9', '#e3f2fd', '#fce4ec', '#f3e5f5', '#eceff1', '#37474f', '#1b1b1b'], V.bc || '#ffffff', function (c) { setBc(c === '#ffffff' ? '' : c); insertPanel(anchor); }));
-      p.appendChild(btn('btn sm', '↺ 改回白色', function () { setBc(''); insertPanel(anchor); }));
+      p.appendChild(swatches(['#ffffff', '#fff8e1', '#fffde7', '#e8f5e9', '#e3f2fd', '#fce4ec', '#f3e5f5', '#eceff1', '#37474f', '#1b1b1b'], V.bc || '#ffffff', function (c) { closePop(); bcAsk(c === '#ffffff' ? '' : c); }));
+      p.appendChild(btn('btn sm', '↺ 改回白色', function () { closePop(); bcAsk(''); }));
       p.appendChild(el('div', 'pop-l', '學生能不能貼便利貼，在「📋 任務指派」每一組設定。'));
     });
   }
@@ -1949,7 +1965,7 @@
     });
   }
   function newPage(after, objs, bg, bc) {
-    var np = { id: WB.uid(), objs: objs || [], bg: bg || '', bc: bc || '' }, idx = pageIdx(after);
+    var np = { id: WB.uid(), objs: objs || [], bg: bg || '', bc: bc === undefined ? (S.defBc || '') : (bc || '') }, idx = pageIdx(after);
     S.pages.splice(idx + 1, 0, np); S.cur = np.id; S.zoom = null; tv = { kind: 'page' }; save(); refreshAll(); showBoard();
     setTimeout(function () { var on = $('pages').querySelector('.pg.on'); if (on) on.scrollIntoView({ block: 'nearest' }); }, 30);
     return np;
@@ -2563,11 +2579,12 @@
     S.pages.forEach(function (p) { p.objs.forEach(function (o) { if (o.k === 'i') used[o.src] = WB.imgs[o.src]; if (o.ff) fu[o.ff] = 1; if (o.rt) o.rt.forEach(function (ln) { (ln || []).forEach(function (r) { if (r.f) fu[r.f] = 1; }); }); }); });
     var fl = (S.fonts || []).filter(function (f) { return fu[f.id] && WB.imgs[f.id]; });
     fl.forEach(function (f) { used[f.id] = WB.imgs[f.id]; });
-    return { app: 'class-whiteboard', v: 1, name: S.projName || '', savedAt: new Date().toISOString(), pages: S.pages, imgs: used, fonts: fl };
+    return { app: 'class-whiteboard', v: 1, name: S.projName || '', savedAt: new Date().toISOString(), pages: S.pages, imgs: used, fonts: fl, defBc: S.defBc || '' };
   }
   function loadProject(d) {
     if (!d || d.app !== 'class-whiteboard' || !Array.isArray(d.pages) || !d.pages.length) { toast('這不是「Andice的共用畫板」的專案檔'); return false; }
     Object.keys(d.imgs || {}).forEach(function (id) { if (d.imgs[id]) { WB.setImg(id, d.imgs[id]); idbPut('i', id, d.imgs[id]); } });
+    S.defBc = /^#[0-9a-f]{6}$/i.test(d.defBc || '') ? d.defBc : '';
     S.fonts = S.fonts || []; (d.fonts || []).forEach(function (f) { if (f && f.id && !S.fonts.some(function (x) { return x.id === f.id; })) S.fonts.push({ id: f.id, name: f.name || '字型' }); });
     S.pages = d.pages.map(function (p) { return { id: p.id || WB.uid(), objs: p.objs || [], bg: p.bg || '', bc: p.bc || '' }; });
     S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null; S.cloudKey = null; S.myPid = null;
