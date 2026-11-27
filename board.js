@@ -867,6 +867,7 @@ window.WB = (function () {
           var b = keep(mk('button', 'eal-dot', '', c)); b.type = 'button'; b.style.background = c; b.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); cmd('foreColor', c); }; r2.appendChild(b);
         });
         var ci = keep(mk('input', 'eal-pick', '', '自選顏色')); ci.type = 'color'; ci.value = '#3157d5';
+        ci.onmousedown = function (ev) { ev.stopPropagation(); saveSel(); hold = true; };   /* 按下去就要先鎖住編輯狀態，不然游標一離開文字框，工具列就消失、調色盤打不開 */
         ci.onclick = function () { saveSel(); hold = true; };
         ci.onchange = function () { hold = false; colorize(ci.value); };
         window.addEventListener('focus', function fb() { window.removeEventListener('focus', fb); setTimeout(function () { if (hold) { hold = false; restoreSel(); } }, 400); });
@@ -879,6 +880,7 @@ window.WB = (function () {
           var b = keep(mk('button', 'eal-dot', '', '標示底色')); b.type = 'button'; b.style.background = c; b.onclick = function (ev) { ev.preventDefault(); ev.stopPropagation(); cmd('hiliteColor', c); }; r3.appendChild(b);
         });
         var hi = keep(mk('input', 'eal-pick', '', '自選底色')); hi.type = 'color'; hi.value = '#fff176';
+        hi.onmousedown = function (ev) { ev.stopPropagation(); saveSel(); hold = true; };
         hi.onclick = function () { saveSel(); hold = true; };
         hi.onchange = function () { hold = false; hilite(hi.value); };
         window.addEventListener('focus', function fb2() { window.removeEventListener('focus', fb2); setTimeout(function () { if (hold) { hold = false; restoreSel(); } }, 400); });
@@ -891,7 +893,7 @@ window.WB = (function () {
         fillFonts('');
         fsel.onmousedown = function (ev) { ev.stopPropagation(); saveSel(); hold = true; };
         fsel.onpointerdown = function (ev) { ev.stopPropagation(); };
-        fsel.onchange = function () { hold = false; restoreSel(); cmd('fontName', fsel.value ? 'wbf-' + fsel.value : 'sans-serif'); fsel.value = ''; };
+        fsel.onchange = function () { var fv = fsel.value; function go(ok) { hold = false; restoreSel(); if (ok) cmd('fontName', fv ? 'wbf-' + fv : 'sans-serif'); fsel.value = ''; } if (fv && opt.ensureFont) { hold = true; opt.ensureFont(fv, go); } else go(true); };
         fsel.onblur = function () { setTimeout(function () { hold = false; }, 200); };
         r4.appendChild(fsel);
         if (opt.uploadFont) {
