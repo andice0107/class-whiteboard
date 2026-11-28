@@ -3,9 +3,16 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var HAS_TTS = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
-  var TTS = { pron: [], on: false, rate: 1, voice: '', dir: 'h', q: [], i: 0, st: 'idle', gen: 0 };
+  var TTS = { pron: [], marks: { mode: 'skip', off: {}, items: [] }, on: false, rate: 1, voice: '', dir: 'h', q: [], i: 0, st: 'idle', gen: 0 };
   try { var tt0 = JSON.parse(localStorage.getItem('wb-tts') || 'null'); if (tt0) { TTS.rate = Math.max(0.5, Math.min(1.6, +tt0.rate || 1)); TTS.voice = tt0.voice || ''; TTS.dir = tt0.dir === 'v' ? 'v' : 'h'; TTS.sym = !!tt0.sym; }
   try { var pr0 = JSON.parse(localStorage.getItem('wb-pron') || '[]'); if (Array.isArray(pr0)) TTS.pron = pr0.filter(function (r) { return r && r[0]; }).map(function (r) { return [String(r[0]), String(r[1] == null ? '' : r[1])]; }); } catch (e) {} } catch (e) {}
+  try { var mk0 = JSON.parse(localStorage.getItem('wb-tts-marks') || 'null'); if (mk0) marksSet(mk0); } catch (e) {}
+  function marksSet(m) {
+    var o = { mode: m && m.mode === 'say' ? 'say' : 'skip', off: {}, items: [] };
+    if (m && m.off) Object.keys(m.off).forEach(function (k) { if (m.off[k]) o.off[k] = 1; });
+    if (m && Array.isArray(m.items)) m.items.forEach(function (r) { if (r && r[0] && !o.items.some(function (x) { return x[0] === String(r[0]); })) o.items.push([String(r[0]), r[1] === 'say' ? 'say' : 'skip']); });
+    TTS.marks = o;
+  }
   var COLORS = ['#111111', '#e53935', '#1e63d6', '#16a34a', '#f08c00', '#8e44ad', '#ff4fa3', '#ffffff'];
   var PALETTE = ['#111111', '#555555', '#e53935', '#f08c00', '#f5c400', '#16a34a', '#1e63d6', '#8e44ad', '#ff4fa3', '#8b5a2b', '#ffffff',
     '#ffd6e0', '#ffe5c2', '#fff3a6', '#d9f5d0', '#cfe8ff', '#e6d9ff', '#ffcccc', '#c8f0ec'];
@@ -1271,10 +1278,88 @@
     var tw = vs.filter(function (v) { return /zh[-_]TW/i.test(v.lang); });
     return tw.filter(function (v) { return /google/i.test(v.name); })[0] || tw.filter(function (v) { return /natural|online/i.test(v.name); })[0] || tw[0] || vs[0];
   }
+  var MARK_GROUPS = [
+    ['circle', '圈圈數字　①②③…', /[①-⑳㉑-㉟㊱-㊿⓪-⓿❶-➓]/g],
+    ['pnum', '括號數字符號　⑴⑵㈠㈡…', /[⑴-⒇㈠-㈩]/g],
+    ['dot', '帶點數字　⒈⒉…', /[⒈-⒛]/g],
+    ['sup', '上標數字　¹²³…', /[⁰¹²³⁴-⁹]/g]
+  ];
+  var MARK_GROUP_NAMES = { wr: '寫出來的括號數字　(1) （1） 【1】…', ln: '行首編號　1. 1、' };
+  function ttsMarks(text) {
+    var M = TTS.marks, hold = [];
+    M.items.forEach(function (r) { if (r[1] === 'say') { var ph = String.fromCharCode(0xE000 + hold.length); hold.push([ph, r[0]]); text = text.split(r[0]).join(ph); } });   /* 指定要唸的先收起來 */
+    M.items.forEach(function (r) { if (r[1] === 'skip') text = text.split(r[0]).join(' '); });
+    if (M.mode === 'skip') {
+      MARK_GROUPS.forEach(function (g) { if (!M.off[g[0]]) text = text.replace(g[2], ' '); });
+      if (!M.off.wr) {
+        for (var k = 0; k < 2; k++) text = text.replace(/(^|[^0-9A-Za-z])[(（\[［〔【]\d{1,2}[)）\]］〕】]/gm, '$1 ');
+        text = text.replace(/^([ \t　]*)[（(][一二三四五六七八九十]{1,3}[）)]/gm, '$1 ');
+      }
+      if (!M.off.ln) text = text.replace(/^([ \t　]*)\d{1,2}[.、．](?!\d)/gm, '$1 ');
+    }
+    hold.forEach(function (h) { text = text.split(h[0]).join(h[1]); });
+    return text;
+  }
+  function marksSave() {
+    try { localStorage.setItem('wb-tts-marks', JSON.stringify(TTS.marks)); } catch (e) {}
+    if (fbUser) { try { cloud.set('wb-tts-marks.json', { marks: TTS.marks, at: Date.now() }).catch(function () {}); } catch (e) {} }
+  }
+  function marksModal() {
+    modal(function (box) {
+      box.appendChild(el('h3', '', '🔣 選項符號清單'));
+      box.appendChild(el('p', 'hint', '唸讀時，這些符號可以「略過」（換成一個空格）或「唸出來」。只改唸的聲音，畫面上的字不會變。'));
+      var gl = el('div', 'pron-list');
+      function drawG() {
+        gl.innerHTML = '';
+        var all = MARK_GROUPS.map(function (g) { return [g[0], g[1]]; }); all.splice(3, 0, ['wr', MARK_GROUP_NAMES.wr], ['ln', MARK_GROUP_NAMES.ln]);
+        all.forEach(function (g) {
+          var on = !TTS.marks.off[g[0]], row = el('div', 'pron-row');
+          row.appendChild(btn('btn sm' + (on ? ' primary' : ''), on ? '✅ 處理' : '不處理', function () { if (on) TTS.marks.off[g[0]] = 1; else delete TTS.marks.off[g[0]]; marksSave(); drawG(); }));
+          row.appendChild(el('span', '', esc(g[1]))); gl.appendChild(row);
+        });
+      }
+      box.appendChild(el('div', 'pop-l', '內建的符號（可以整組關掉）'));
+      box.appendChild(gl);
+      box.appendChild(el('div', 'pop-l', '我自己加的符號'));
+      var list = el('div', 'pron-list');
+      function draw() {
+        list.innerHTML = '';
+        if (!TTS.marks.items.length) list.appendChild(el('p', 'hint', '目前沒有。'));
+        TTS.marks.items.forEach(function (r, i) {
+          var row = el('div', 'pron-row');
+          row.appendChild(el('b', '', esc(r[0]))); row.appendChild(el('span', 'grow'));
+          row.appendChild(btn('btn sm', r[1] === 'say' ? '🔊 唸出' : '🔇 略過', function () { r[1] = r[1] === 'say' ? 'skip' : 'say'; marksSave(); draw(); }));
+          row.appendChild(btn('btn sm', '✏️ 改', function () { a.value = r[0]; act = r[1]; actB(); TTS.marks.items.splice(i, 1); marksSave(); draw(); a.focus(); }));
+          row.appendChild(btn('btn sm ghost del', '🗑', function () { TTS.marks.items.splice(i, 1); marksSave(); draw(); }));
+          list.appendChild(row);
+        });
+      }
+      box.appendChild(list);
+      var ar = el('div', 'pop-row'), a = el('input', 'num'), act = 'skip';
+      a.placeholder = '符號或文字'; a.style.width = '40%';
+      var ab = btn('btn sm', '🔇 略過', function () { act = act === 'say' ? 'skip' : 'say'; actB(); });
+      function actB() { ab.textContent = act === 'say' ? '🔊 唸出' : '🔇 略過'; }
+      ar.appendChild(a); ar.appendChild(ab);
+      ar.appendChild(btn('btn sm primary', '新增', function () {
+        var f = a.value.trim(); if (!f) return toast('請先填符號');
+        var ex = TTS.marks.items.filter(function (r) { return r[0] === f; })[0]; if (ex) ex[1] = act; else TTS.marks.items.push([f, act]);
+        a.value = ''; marksSave(); draw();
+      }));
+      box.appendChild(ar);
+      box.appendChild(el('p', 'hint', '選「唸出」的符號，就算屬於上面的內建符號也會唸。' + (fbUser ? '已登入 Google：清單會跟著帳號走。' : '沒有登入 Google 時，清單只存在這台電腦的這個瀏覽器。')));
+      var mb = el('div', 'modal-btns'); mb.appendChild(btn('btn primary', '完成', closeModal)); box.appendChild(mb);
+      drawG(); draw();
+      if (fbUser) cloud.get('wb-tts-marks.json').then(function (v) {
+        if (!v || !v.marks || !Array.isArray(v.marks.items)) return; var ch = false;
+        v.marks.items.forEach(function (r) { if (r && r[0] && !TTS.marks.items.some(function (x) { return x[0] === String(r[0]); })) { TTS.marks.items.push([String(r[0]), r[1] === 'say' ? 'say' : 'skip']); ch = true; } });
+        if (ch) { try { localStorage.setItem('wb-tts-marks', JSON.stringify(TTS.marks)); } catch (e) {} draw(); }
+      }).catch(function () {});
+    });
+  }
   function ttsChunks(text) {
     var out = [];
     if (!TTS.sym) text = String(text || '').replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200d\ufe0e\ufe0f\u20e3\p{So}]/gu, '');   /* 預設不唸 emoji 和符號 */
-    text = String(text || '');
+    text = ttsMarks(String(text || ''));   /* 選項符號：略過或唸出 */
     TTS.pron.slice().sort(function (a, b) { return b[0].length - a[0].length; }).forEach(function (r) { if (r[0]) text = text.split(r[0]).join(r[1]); });   /* 讀音修正：只改唸的聲音，畫面上的字不變 */
     String(text || '').split('\n').forEach(function (line) {
       (line.match(/[^。！？!?；;]+[。！？!?；;]*/g) || []).forEach(function (s) {
@@ -1423,6 +1508,8 @@
       p.appendChild(dr);
       p.appendChild(el('p', 'hint', '直式文字框請選「直向」，會從最右邊那一行開始唸；橫式文字框選哪個都是由上到下。'));
       p.appendChild(btn('mi' + (TTS.sym ? ' on' : ''), TTS.sym ? '✅ 唸出符號與 emoji：是（按一下改成不唸）' : '唸出符號與 emoji：否（按一下改成要唸）', function () { TTS.sym = !TTS.sym; ttsSave(); readPanel(tbAnchor('read')); }));
+      p.appendChild(btn('mi' + (TTS.marks.mode === 'say' ? ' on' : ''), TTS.marks.mode === 'say' ? '✅ 選項符號 ①②（1）：唸出（按一下改成略過）' : '選項符號 ①②（1）：略過（按一下改成唸出）', function () { TTS.marks.mode = TTS.marks.mode === 'say' ? 'skip' : 'say'; marksSave(); closePop(); renderTools(); }));
+      p.appendChild(btn('mi', '🔣 編輯符號清單…', function () { closePop(); marksModal(); }));
       p.appendChild(btn('mi', '🔧 讀音修正（多音字唸錯時用）' + (TTS.pron.length ? '・' + TTS.pron.length + ' 條' : ''), function () { closePop(); pronModal(); }));
       p.appendChild(el('div', 'pop-l', '速度（同一個聲音變快變慢）'));
       var sr = el('div', 'pop-row'), sl = el('input'), sv = el('b', 'tts-rate', TTS.rate.toFixed(2).replace(/0$/, '') + '×');
@@ -2661,12 +2748,20 @@
     S.pages.forEach(function (p) { p.objs.forEach(function (o) { if (o.k === 'i') used[o.src] = WB.imgs[o.src]; if (o.ff) fu[o.ff] = 1; if (o.rt) o.rt.forEach(function (ln) { (ln || []).forEach(function (r) { if (r.f) fu[r.f] = 1; }); }); }); });
     var fl = (S.fonts || []).filter(function (f) { return fu[f.id] && WB.imgs[f.id]; });
     fl.forEach(function (f) { used[f.id] = WB.imgs[f.id]; });
-    return { app: 'class-whiteboard', v: 1, name: S.projName || '', savedAt: new Date().toISOString(), pages: S.pages, imgs: used, fonts: fl, defBc: S.defBc || '' };
+    var d = { app: 'class-whiteboard', v: 1, name: S.projName || '', savedAt: new Date().toISOString(), pages: S.pages, imgs: used, fonts: fl, defBc: S.defBc || '' };
+    if (S.projPron && S.projPron.length) d.pron = S.projPron;   /* 這個專案帶來的讀音修正，跟著專案走 */
+    return d;
   }
   function loadProject(d) {
     if (!d || d.app !== 'class-whiteboard' || !Array.isArray(d.pages) || !d.pages.length) { toast('這不是「Andice的共用畫板」的專案檔'); return false; }
     Object.keys(d.imgs || {}).forEach(function (id) { if (d.imgs[id]) { WB.setImg(id, d.imgs[id]); idbPut('i', id, d.imgs[id]); } });
     S.defBc = /^#[0-9a-f]{6}$/i.test(d.defBc || '') ? d.defBc : '';
+    S.projPron = Array.isArray(d.pron) ? d.pron.filter(function (r) { return r && r[0]; }).map(function (r) { return [String(r[0]), String(r[1] == null ? '' : r[1])]; }) : [];
+    if (S.projPron.length) {
+      var addN = 0; S.projPron.forEach(function (r) { if (!TTS.pron.some(function (x) { return x[0] === r[0]; })) { TTS.pron.push(r.slice()); addN++; } });
+      if (addN) pronSave();
+      toast('這個專案帶來 ' + S.projPron.length + ' 條讀音修正，' + (addN ? '已加入' : '你原本都有設定了'));
+    }
     S.fonts = S.fonts || []; (d.fonts || []).forEach(function (f) { if (f && f.id && !S.fonts.some(function (x) { return x.id === f.id; })) S.fonts.push({ id: f.id, name: f.name || '字型' }); });
     S.pages = d.pages.map(function (p) { return { id: p.id || WB.uid(), objs: p.objs || [], bg: p.bg || '', bc: p.bc || '' }; });
     S.cur = S.pages[0].id; S.projName = d.name || ''; S.zoom = null; S.assignAll = null; S.cast = null; S.cloudKey = null; S.myPid = null;
@@ -3695,7 +3790,7 @@
     '<h4>🖱️ 小技巧</h4><ul><li>文字框、便利貼、圖形裡的文字，可以在物件右鍵選單用「文字對齊」選靠左、置中、靠右。點兩下進入編輯時，上方會出現小工具列：反白幾個字，可以只改這幾個字的<b>粗體、斜體、底線、字色、底色（螢光筆標記）、字型</b>（顏色含自選顏色、吸色），同一行裡其他字不受影響；「整行」的 ⬅↔➡ 則是游標放在哪一行（或反白跨過幾行）就只調整那幾行；用右鍵選單的「文字對齊」則是整個框一起，會蓋掉逐行設定。注意是以「一整行」為單位，不能只改一行裡的幾個字。</li><li>在物件上<b>按右鍵</b>（平板長按）會有選單：複製、刪除、鎖定、旋轉、顏色等。</li><li>連按兩下文字、便利貼、圖形可以直接編輯內容。</li><li>YouTube 影片框你按播放／暫停／拖時間，學生那邊會一起動。</li><li>左邊的頁面欄可以新增、複製、排序、刪除頁面，每頁可以換背景。</li></ul>' +
     '<h4>👥 學生與分組（上方「👥 學生名單」「📋 任務指派」）</h4><ul><li>「👥 學生」裡的「📋 匯入名單」可以貼上「學號 姓名」，之後點名、分組、學生名單都會顯示名字（名單記在這台電腦）。</li><li>學生名單可以分組（最多 30 人、30 組）、移出學生。</li><li>「任務指派」可以勾選要指派的頁面給各組，設定每組能不能寫、能不能貼便利貼，也能把某一位學生或某一組的畫面投到全班。</li></ul>' +
     '<h4>🔔 通知記錄</h4><p>必跳通知（會記錄、橘點閃，並在畫面上方留一張橘框提示卡，按 ✕ 才消失）有：Google 要求重新連線（卡上有重新連線按鈕）、教室連線中斷／恢復、自動存失敗、全班投票完成、倒數計時到、學號被重複使用。還包括：教室連線中斷／恢復、這台電腦無法自動儲存、Google 雲端快到期、倒數計時和作業時間到、全班投票完成。橘色閃爍光點只在「系統」通知（雲端、連線問題）和「學生狀態」（離開畫布、回來、斷線、進入教室、學號被重複使用、換裝置）出現；一般的畫、移動、改物件只記在「課程」記錄，不閃。「💾 專案」→ 下方「通知記錄」，分「系統」（存專案、雲端、連線問題）和「課程」（課堂操作、物件新增修改刪除）兩類，從這次登入開始記，重新登入會重記。儲存專案這類通知只記錄不跳出；有新通知時「專案」旁會有橘色閃爍光點，打開查看後消失。</p>'+
-    '<h4>🔊 唸讀文字框</h4><ul><li>工具欄的「🔊 唸讀」打開後，點文字框（便利貼、圖形裡的字也可以，鎖定的也可以）會唸出框裡全部文字；點兩下進入編輯並反白幾個字，只會唸反白的。不想開功能時，在物件上<b>按右鍵 →「🔊 唸讀這個物件」</b>也能直接唸（鎖定的也可以）。</li><li>唸的時候下方有一條可以<b>拖動</b>的唸讀條（按住 ⠿ 或空白處拖到不擋字的地方）：上句、暫停／繼續、下句、重讀、停止，第二排可以選「從第幾句開始唸」，以及調速度（同一個聲音變快變慢）。暫停後按繼續，會從暫停的地方接著唸（聲音有回報位置時；沒有回報時從那一小段的開頭）。</li><li>唸讀面板裡：「唸出符號與 emoji」預設關閉（不唸 👍★ 這類符號），可以打開；<b>「🔧 讀音修正」</b>可以新增「這個詞→改唸成」的規則，多音字唸錯時用，例如 銀行→銀航，只改聲音，畫面上的字不變。有登入 Google 時，修正表會跟著帳號走。</li></ul>' +
+    '<h4>🔊 唸讀文字框</h4><ul><li>工具欄的「🔊 唸讀」打開後，點文字框（便利貼、圖形裡的字也可以，鎖定的也可以）會唸出框裡全部文字；點兩下進入編輯並反白幾個字，只會唸反白的。不想開功能時，在物件上<b>按右鍵 →「🔊 唸讀這個物件」</b>也能直接唸（鎖定的也可以）。</li><li>唸的時候下方有一條可以<b>拖動</b>的唸讀條（按住 ⠿ 或空白處拖到不擋字的地方）：上句、暫停／繼續、下句、重讀、停止，第二排可以選「從第幾句開始唸」，以及調速度（同一個聲音變快變慢）。暫停後按繼續，會從暫停的地方接著唸（聲音有回報位置時；沒有回報時從那一小段的開頭）。</li><li>唸讀面板裡：「唸出符號與 emoji」預設關閉（不唸 👍★ 這類符號），可以打開；<b>「🔧 讀音修正」</b>可以新增「這個詞→改唸成」的規則，多音字唸錯時用，例如 銀行→銀航，只改聲音，畫面上的字不變。有登入 Google 時，修正表會跟著帳號走。專案檔如果附了讀音修正，打開專案時會自動加進你的修正表，另存專案時也會一起帶走。</li><li><b>選項符號</b>（①②③、（1）、(1)、⑴、⒈、行首的 1. 等編號）預設<b>略過</b>（不唸），要唸題目選項時，在唸讀面板按「選項符號」改成「唸出」。<b>「🔣 編輯符號清單…」</b>可以把內建的符號群組單獨關掉，也可以自己新增符號並選擇略過或唸出。</li></ul>' +
     '<h4>🔤 字型庫與換字型</h4><ul><li>「插入」面板或文字框右鍵選單裡的「🔤 字型庫」可以<b>上傳字型</b>（.ttf .otf .ttc .woff .woff2，沒有大小限制）、<b>📁 批次匯入</b>一整個資料夾（依關鍵字自動勾選，已在字型庫的會跳過；.ttc 會自動拆成裡面每個字型）、<b>匯出備份</b>（單一字型，或「全部匯出成 zip」）、🗑 刪除。字型顯示字型檔內建的中文名稱，每個字型都有範字。</li><li>登入 Google 後，字型會存進你自己的雲端硬碟，換電腦登入就有；雲端字型第一次使用時要下載（大檔會等一下），可以按「⬇ 全部下載到這台電腦」先抓好。沒登入時字型只存在這台電腦的瀏覽器。</li><li>換字型：整個框 → 文字框右鍵選單的「選字型 ▸」（跳出獨立小視窗，點一下套用）；只改幾個字 → 點兩下編輯、反白後按工具列的「選字型 ▾」。用到的字型會跟著專案存檔，也會傳給學生（學生第一次看到會等字型傳完）。</li><li>注音字型要看字型本身：有的打字後自動在字旁出注音，有的需要特殊輸入法。</li></ul>' +
     '<h4>✍️ 文字框的行距、底色標記</h4><ul><li>文字框右鍵選單的「行距」可以窄一點、寬一點（預設 1.35 倍），整個框一起調。</li><li>點兩下編輯、反白文字後，工具列的「底色」那排可以替反白的字加上螢光筆底色（有 6 色和自選色），「✕ 去除底色」拿掉。</li></ul>' +
     '<h4>🎨 畫布底色</h4><p>「插入」面板的「畫布底色」可以選頁面底色（10 色或自選）。選好後會問你「只改這一頁」還是「全部頁面（含之後新增）」；選全部之後新增的頁面也會用同一個底色，直到你再改。</p>' +
@@ -3712,5 +3807,5 @@
   $('b-help').onclick = function () { helpModal('u'); };
 
   idbLoadImgs(function () { idbGet('s', 'S', boot); });
-  window.__wb = { toast: toast, S: function () { return S; }, V: V, propagateSp: propagateSp, assignPages: assignPages, stepAllPages: stepAllPages, liveGroups: liveGroups, tPick: tPick, renderTask: renderTask };
+  window.__wb = { ttsChunks: ttsChunks, TTS: TTS, loadProject: loadProject, projectData: projectData, toast: toast, S: function () { return S; }, V: V, propagateSp: propagateSp, assignPages: assignPages, stepAllPages: stepAllPages, liveGroups: liveGroups, tPick: tPick, renderTask: renderTask };
 })();
